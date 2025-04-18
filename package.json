@@ -1,0 +1,21 @@
+{
+  "name": "invisible-overlay",
+  "version": "1.0.0",
+  "main": "electron/main.ts",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite build && electron ./dist-electron/main.js"
+  },
+  "dependencies": {
+    "electron": "^29.1.4",
+    "screenshot-desktop": "^1.15.1",
+    "vite": "^6.2.5",
+    "vite-plugin-electron": "^0.28.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "@types/screenshot-desktop": "^1.12.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
