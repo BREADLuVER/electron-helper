@@ -1,3 +1,5 @@
 node_modules
 .env
 git-filter-repo
+dist/
+dist-electron/
