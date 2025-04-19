@@ -20,7 +20,6 @@
 
       #input-bar {
         margin-top: 1rem;
-        display: none;
       }
 
       #input-bar input {
@@ -33,6 +32,23 @@
         margin-top: 1rem;
         font-style: italic;
         white-space: pre-wrap;
+      }
+
+      .reply {
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+      }
+
+      pre, code {
+        font-family: monospace;
+        white-space: pre-wrap;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 0.5rem;
+        border-radius: 4px;
+        display: block;
+        overflow-x: auto;
       }
     </style>
   </head>
@@ -58,10 +74,34 @@
       let screenshots = [];
 
       ipcRenderer.on("screenshot", (event, filePath) => {
+        const wrapper = document.createElement("div");
+        wrapper.style.position = "relative";
+        wrapper.style.display = "inline-block";
+        wrapper.style.margin = "5px";
+
         const img = document.createElement("img");
         img.src = "file://" + filePath;
-        screenshotsEl.appendChild(img);
-        screenshots.push(filePath);
+        img.style.width = "200px";
+
+        const close = document.createElement("div");
+        close.textContent = "✕";
+        close.style.position = "absolute";
+        close.style.top = "2px";
+        close.style.right = "4px";
+        close.style.cursor = "pointer";
+        close.style.color = "red";
+        close.style.background = "rgba(0, 0, 0, 0.5)";
+        close.style.borderRadius = "50%";
+        close.style.padding = "2px 6px";
+
+        close.onclick = () => {
+          wrapper.remove();
+          screenshots = screenshots.filter(s => !s.includes(filePath));
+        };
+
+        wrapper.appendChild(img);
+        wrapper.appendChild(close);
+        screenshotsEl.appendChild(wrapper);
       });
 
       ipcRenderer.on("show-input", () => {
@@ -75,18 +115,24 @@
 
       ipcRenderer.on("send-to-api", () => {
         ipcRenderer.send("send-to-api", { message, screenshots });
+        inputField.value = "";
+        message = "";
       });
 
       ipcRenderer.on("api-response", (event, reply) => {
-        responseEl.textContent = reply;
+        const replyDiv = document.createElement("div");
+        replyDiv.className = "reply";
+        replyDiv.innerHTML = reply;
+        responseEl.appendChild(replyDiv);
       });
 
       ipcRenderer.on("cleared", () => {
         screenshots = [];
         screenshotsEl.innerHTML = "";
         responseEl.textContent = "";
-        inputBar.style.display = "none";
+        inputBar.style.display = "block";
         inputField.value = "";
+        inputField.focus();
         message = "";
       });
     </script>

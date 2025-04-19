@@ -13,6 +13,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let mainWindow: BrowserWindow | null = null;
 let isVisible: boolean = true;
 let screenshots: string[] = [];
+let conversationHistory: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -64,6 +65,7 @@ function registerShortcuts() {
 
   globalShortcut.register("F4", () => {
     screenshots = [];
+    conversationHistory = [];
     mainWindow?.webContents.send("cleared");
   });
 
@@ -93,10 +95,6 @@ function registerShortcuts() {
         mainWindow?.setIgnoreMouseEvents(false);
       }
     }, 300);
-  });
-
-  globalShortcut.register("Control+I", () => {
-    mainWindow?.webContents.send("show-input");
   });
 
   globalShortcut.register("Control+Enter", () => {
@@ -144,6 +142,7 @@ ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
+        ...conversationHistory,
         {
           role: "user",
           content: [
@@ -161,6 +160,15 @@ ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
 
     const reply = response.choices?.[0]?.message?.content || "No response";
     event.sender.send("api-response", reply);
+    conversationHistory.push({
+      role: "user",
+      content: [{ type: "text", text: message }]
+    });
+    
+    conversationHistory.push({
+      role: "assistant",
+      content: [{ type: "text", text: reply }]
+    });
   } catch (err) {
     console.error("OpenAI Error:", err);
     event.sender.send("api-response", "Failed to contact OpenAI.");
