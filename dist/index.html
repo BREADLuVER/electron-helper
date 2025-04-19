@@ -1,23 +1,94 @@
-
 <!DOCTYPE html>
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Invisible Overlay</title>
+    <title>Overlay</title>
     <style>
       body {
-        background: rgba(0, 0, 0, 0.3);
         margin: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
+        padding: 1rem;
+        background: rgba(0, 0, 0, 0.3);
         color: white;
-        font-size: 2rem;
+        font-family: sans-serif;
+      }
+
+      #screenshots img {
+        width: 200px;
+        margin: 5px;
+        border: 2px solid white;
+      }
+
+      #input-bar {
+        margin-top: 1rem;
+        display: none;
+      }
+
+      #input-bar input {
+        width: 80%;
+        padding: 0.5rem;
+        font-size: 1rem;
+      }
+
+      #response {
+        margin-top: 1rem;
+        font-style: italic;
+        white-space: pre-wrap;
       }
     </style>
   </head>
   <body>
-    Invisible Overlay Active
+    <h2>Captured Screenshots</h2>
+    <div id="screenshots"></div>
+
+    <div id="input-bar">
+      <input id="user-message" type="text" placeholder="Type your message..." />
+    </div>
+
+    <div id="response"></div>
+
+    <script>
+      const { ipcRenderer } = window.require('electron');
+
+      const screenshotsEl = document.getElementById('screenshots');
+      const inputBar = document.getElementById('input-bar');
+      const inputField = document.getElementById('user-message');
+      const responseEl = document.getElementById('response');
+
+      let message = "";
+      let screenshots = [];
+
+      ipcRenderer.on("screenshot", (event, filePath) => {
+        const img = document.createElement("img");
+        img.src = "file://" + filePath;
+        screenshotsEl.appendChild(img);
+        screenshots.push(filePath);
+      });
+
+      ipcRenderer.on("show-input", () => {
+        inputBar.style.display = "block";
+        inputField.focus();
+      });
+
+      inputField.addEventListener("input", (e) => {
+        message = e.target.value;
+      });
+
+      ipcRenderer.on("send-to-api", () => {
+        ipcRenderer.send("send-to-api", { message, screenshots });
+      });
+
+      ipcRenderer.on("api-response", (event, reply) => {
+        responseEl.textContent = reply;
+      });
+
+      ipcRenderer.on("cleared", () => {
+        screenshots = [];
+        screenshotsEl.innerHTML = "";
+        responseEl.textContent = "";
+        inputBar.style.display = "none";
+        inputField.value = "";
+        message = "";
+      });
+    </script>
   </body>
 </html>
