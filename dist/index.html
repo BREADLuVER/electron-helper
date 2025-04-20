@@ -88,8 +88,6 @@
     <div id="response"></div>
 
     <script>
-      const ipcRenderer = window.ipcRenderer;
-
       const screenshotsEl = document.getElementById('screenshots');
       const inputBar = document.getElementById('input-bar');
       const inputField = document.getElementById('user-message');
@@ -98,14 +96,14 @@
       let message = "";
       let screenshots = [];
 
-      ipcRenderer.on("screenshot", (event, filePath) => {
+      ipcRenderer.on("screenshot", (filePath) => {
         const wrapper = document.createElement("div");
         wrapper.style.position = "relative";
         wrapper.style.display = "inline-block";
         wrapper.style.margin = "5px";
 
         const img = document.createElement("img");
-        img.src = "file://" + filePath;
+        img.src = filePath;
         img.style.width = "200px";
 
         const close = document.createElement("div");
@@ -133,7 +131,7 @@
         message = e.target.value;
       });
 
-      ipcRenderer.on("send-to-api", (event, mainShots) => {
+      ipcRenderer.on("send-to-api", (mainShots) => {
         screenshots = mainShots;
         ipcRenderer.send("send-to-api", {
           message,
@@ -145,7 +143,7 @@
         screenshotsEl.innerHTML = "";
       });
 
-      ipcRenderer.on("api-response", (event, reply) => {
+      ipcRenderer.on("api-response", (reply) => {
         const replyDiv = document.createElement("div");
         replyDiv.className = "reply";
 

@@ -5,6 +5,7 @@ import { screen } from "electron";
 import screenshot from "screenshot-desktop";
 import * as fs from "fs";
 import * as os from "os";
+import { pathToFileURL } from "url";
 import dotenv from "dotenv";
 dotenv.config();
 import { OpenAI } from "openai";
@@ -87,7 +88,7 @@ function registerShortcuts() {
         const filePath = path.join(os.tmpdir(), `ss-${Date.now()}.jpg`);
         fs.writeFileSync(filePath, img);
         screenshots.push(filePath);
-        mainWindow?.webContents.send("screenshot", filePath);
+        mainWindow?.webContents.send("screenshot", pathToFileURL(filePath).href);
       } catch (e) {
         console.error("Screenshot failed:", e);
       } finally {
