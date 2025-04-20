@@ -20,13 +20,15 @@
     
       #input-bar {
         margin-top: 1rem;
-        background: rgba(255, 255, 255, 0.2);
       }
     
       #input-bar input {
         width: 80%;
-        padding: 0.5rem;
+        cursor: default;
+        background: transparent;
         font-size: 11px;
+        color: rgb(221, 217, 217);
+        ;
       }
     
       #response {
@@ -86,7 +88,7 @@
     <div id="response"></div>
 
     <script>
-      const { ipcRenderer } = window.require('electron');
+      const ipcRenderer = window.ipcRenderer;
 
       const screenshotsEl = document.getElementById('screenshots');
       const inputBar = document.getElementById('input-bar');
@@ -125,11 +127,6 @@
         wrapper.appendChild(img);
         wrapper.appendChild(close);
         screenshotsEl.appendChild(wrapper);
-      });
-
-      ipcRenderer.on("show-input", () => {
-        inputBar.style.display = "block";
-        inputField.focus();
       });
 
       inputField.addEventListener("input", (e) => {
