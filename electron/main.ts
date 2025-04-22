@@ -60,7 +60,7 @@ function createWindow() {
       contextIsolation: true,
     }
   });
-  
+
   mainWindow.on("move", () => {
     if (!audioWin) return;
   
@@ -143,8 +143,8 @@ function registerShortcuts() {
       const mainBounds = mainWindow.getBounds();
       const margin = 10;
   
-      const audioWidth = 380;
-      const audioHeight = 260;
+      const audioWidth = 500;
+      const audioHeight = 600;
   
       const x = mainBounds.x + mainBounds.width + margin;
       const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
@@ -180,82 +180,6 @@ function registerShortcuts() {
       stopAudioPipeline();
     }
   });
-}
-
-export async function startAudioPipeline(win: BrowserWindow): Promise<void> {
-  if (audioStream !== null || aai !== null) {
-    return; // already running
-  }
-
-  // 1. spawn FFmpeg in loopback capture mode
-  audioStream = spawn(ffmpegPath, [
-    "-f", "dshow",
-    "-i", "audio=Stereo Mix (Realtek(R) Audio)", // update this to match your device
-    "-ac", "1",
-    "-ar", "16000",
-    "-f", "s16le",
-    "-"
-  ]);
-
-  // 2. connect AssemblyAI realtime transcriber
-  try {
-    aai = await aaiClient.realtime.transcriber({
-      sampleRate: 16000
-    });
-
-    aai.on("transcript", async (result) => {
-      if (result.message_type !== "FinalTranscript") {
-        return;
-      }
-
-      const userText = result.text;
-      win.webContents.send("transcript", userText);
-
-      // 3. Get personalized response from OpenAI
-      try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: resumeText
-            },
-            {
-              role: "user",
-              content: userText
-            }
-          ]
-        });
-
-        const reply = completion.choices[0]?.message?.content ?? "";
-        win.webContents.send("assistant-reply", reply);
-      } catch (err) {
-        console.error("OpenAI response error:", err);
-      }
-    });
-
-    // 4. pipe audio to AssemblyAI
-    audioStream.stdout.on("data", (chunk: Buffer) => {
-      if (aai) {
-        aai.sendAudio(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
-      }
-    });
-
-    aai.on("close", () => {
-      console.log("AssemblyAI connection closed");
-      aai = null;
-    });
-  } catch (error) {
-    console.error("Failed to initialize AssemblyAI transcriber:", error);
-    aai = null;
-  }
-}
-
-function stopAudioPipeline() {
-  audioStream?.kill("SIGKILL");
-  audioStream = null;
-  aai?.close();
-  aai = null;
 }
 
 function moveWindow(deltaX: number, deltaY: number) {
@@ -350,4 +274,106 @@ ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
     console.error("OpenAI Error:", err);
     event.sender.send("api-response", "Failed to contact OpenAI.");
   }
+});
+
+export async function startAudioPipeline(win: BrowserWindow): Promise<void> {
+  if (audioStream !== null || aai !== null) {
+    return;
+  }
+
+  audioStream = spawn(ffmpegPath, [
+    "-f", "dshow",
+    "-i", "audio=Microphone Array (Realtek(R) Audio)",
+    "-ac", "1",
+    "-ar", "16000",
+    "-f", "s16le",
+    "-"
+  ]);
+
+  // 2. connect AssemblyAI realtime transcriber
+  try {
+    aai = await aaiClient.realtime.transcriber({
+      sampleRate: 16000
+    });
+
+    aai.on("transcript", async (result) => {
+      if (result.message_type !== "FinalTranscript") {
+        return;
+      }
+
+      const userText = result.text;
+      win.webContents.send("transcript", userText);
+
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: resumeText
+            },
+            {
+              role: "user",
+              content: userText
+            }
+          ]
+        });
+
+        const reply = completion.choices[0]?.message?.content ?? "";
+        win.webContents.send("assistant-reply", reply);
+      } catch (err) {
+        console.error("OpenAI response error:", err);
+      }
+    });
+
+    audioStream.stdout.on("data", (chunk: Buffer) => {
+      if (aai) {
+        aai.sendAudio(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+      }
+    });
+
+    aai.on("close", () => {
+      console.log("AssemblyAI connection closed");
+      aai = null;
+    });
+  } catch (error) {
+    console.error("Failed to initialize AssemblyAI transcriber:", error);
+    aai = null;
+  }
+}
+
+function stopAudioPipeline() {
+  audioStream?.kill("SIGKILL");
+  audioStream = null;
+  aai?.close();
+  aai = null;
+}
+
+ipcMain.on("audio-submit", async (event, transcript: string) => {
+  if (!audioWin) {
+    return;
+  }
+
+  try {
+    audioWin.webContents.send("assistant-reply", "…thinking…");
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: resumeText },
+        { role: "user", content: transcript }
+      ]
+    });
+
+    const reply = completion.choices[0]?.message?.content ?? "";
+    return audioWin.webContents.send("assistant-reply", reply);
+  } catch (error) {
+    console.error("Error in audio-submit:", error);
+    return audioWin.webContents.send("assistant-reply", "Error generating response.");
+  }
+});
+
+ipcMain.on("audio-clear", () => {
+  conversationHistory = [];
+  return;
 });

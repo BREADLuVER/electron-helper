@@ -1,0 +1,59 @@
+John Doe
+Software Engineer (Fullstack Engineer)
+Location: Somerset, NJ (Green Card Holder)
+Email: john.doe@example.com | Phone: (123) 456-7890
+GitHub: johndoe | Portfolio: johndoe.dev
+
+SUMMARY
+Full-stack engineer with ~5 years of experience across React, Node.js, Java Spring Boot, and GraphQL. Strong background in building responsive frontends, scalable APIs, and containerized CI/CD systems using Docker and GitHub Actions. Prioritizes accessibility, web performance, and real-world UX feedback. Known for delivering production-grade software in fast-paced Agile teams.
+
+SKILLS
+- Front-End: React, Redux, TypeScript, JavaScript (ES6+), CSS Modules, SASS, Styled Components, D3.js
+- Back-End: Node.js, Express, Java (Spring Boot), REST, GraphQL, WebSocket, OAuth2, JWT, Redis
+- Database: PostgreSQL, MySQL, MongoDB (Sequelize, Mongoose, Hibernate)
+- Testing & DevOps: Jest, Cypress, Mocha, JUnit, Docker, GitHub Actions, Jenkins, CI/CD, Chrome DevTools
+- Tools: Figma, Swagger, Postman, VS Code, IntelliJ, Jira, Slack
+
+EXPERIENCE
+Senior Fullstack Engineer – LearnLoop Inc. (Jan 2023 – Present)
+- Built modern LMS with React, GraphQL, AWS S3/CloudFront for scalable content delivery
+- Created rich course editor and live dashboards using Apollo Server and WebSockets
+- Led accessibility upgrades, Dockerized development workflows, and mentored 2 juniors
+
+Fullstack Engineer – FinEdge Solutions (Sep 2021 – Dec 2022)
+- Developed InvestTrack Pro: real-time financial dashboard using D3, WebSocket, OAuth2
+- Refactored backend to TypeScript, implemented Redis caching and REST APIs
+- Achieved ~90% test coverage; mentored team on performance and React re-render strategy
+
+Software Engineer – HealthNova Solutions (Jun 2020 – Aug 2021)
+- Built telehealth app with React, Redux, Java Spring Boot, MySQL, and secure JWT auth
+- Integrated Twilio SMS, Google Maps, and WCAG accessibility across UI
+- Delivered consistent performance with API optimization and React Testing Library
+
+Fullstack Developer – ShopEase Inc. (Jun 2019 – May 2020)
+- Created eCommerce SPA with React + Redux, Stripe integration, PostgreSQL with Sequelize
+- Reduced bundle size by ~30% and page load by ~25% with lazy loading and caching
+- Led CI/CD setup with Jenkins and Docker; collaborated in Agile sprints
+
+Software Engineer – TicketFlow Systems (Feb 2020 – May 2021)
+- Built OCR ticket intake app using Azure OCR, Django, PostgreSQL, Celery, Redis
+- Designed microservices in Docker Compose and admin dashboard with Bootstrap
+- Delivered automation to legal teams, reducing manual review workload drastically
+
+Fullstack Developer – Sunshine Daycare Systems (Jun 2021 – Apr 2022)
+- Developed drag-and-drop scheduler in React, Node.js backend with time tracking
+- Integrated Twilio SMS for alerts and RBAC for admin control
+- Enhanced calendar UX and coverage gap detection for shift conflicts
+
+Frontend Engineer – TheOfferCall (May 2022 – Present)
+- Built email outreach app with React, TypeScript, Firebase, OpenAI, Gmail API
+- Enabled template tokenization and real-time personalization previews
+- Added inline tone editing, analytics, accessibility, and OAuth integration
+
+EDUCATION
+Bachelor of Science in Computer Science – New York University (NYU)
+
+OTHER
+- Follow web performance strategies from Airbnb & Google Dev blogs
+- Improved Lighthouse scores, fixed accessibility via axe audits
+- Contributed to open source and maintained clean GitHub portfolio
