@@ -1,10 +1,11 @@
 {
   "name": "invisible-overlay",
   "version": "1.0.0",
-  "main": "electron/main.ts",
+  "main": "electron/main.js",
+  "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "vite build && electron ./dist-electron/main.js"
+    "start": "vite build && electron electron/main.js"
   },
   "dependencies": {
     "assemblyai": "^4.9.0",

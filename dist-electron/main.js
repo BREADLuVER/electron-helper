@@ -1,1 +1,11 @@
-"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});require("electron");require("path");const e=require("./main-q8GUjWMv.js");require("child_process");require("fs");require("os");require("url");exports.startAudioPipeline=e.startAudioPipeline;
+import "electron";
+import "path";
+import { s, a } from "./main-P29I6g5Z.js";
+import "child_process";
+import "fs";
+import "os";
+import "url";
+export {
+  s as startAudioPipeline,
+  a as stopAudioPipeline
+};

@@ -6,10 +6,11 @@ const VALID_CHANNELS = [
   "api-response",
   "cleared",
 
-  "transcript",
+  "transcript-partial",
+  "transcript-final",
   "assistant-reply",
   "audio-submit",
-  "audio-clear" 
+  "audio-clear",
 ];
 
 contextBridge.exposeInMainWorld("ipcRenderer", {

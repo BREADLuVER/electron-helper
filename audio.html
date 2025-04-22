@@ -1,22 +1,41 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <title>Audio Chat</title>
   <style>
     body {
       margin: 0;
       font: 12px sans-serif;
-      background: rgba(0,0,0,.55);
+      background: rgba(0, 0, 0, 0.55);
       color: #eee;
       padding: 6px;
     }
-    #tx, #ai {
-      white-space: pre-wrap;
+    h4 {
+      margin: 4px 0;
+      font-size: 11px;
+      color: #ccc;
+    }
+    #history, #live, #ai {
       font-size: 12px;
       line-height: 1.4;
       margin: 4px 0;
       max-height: 110px;
       overflow-y: auto;
+      padding: 4px;
+      border: 1px solid #666;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.3);
+    }
+    #live {
+      font-style: italic;
+      color: #ffeb3b;
+    }
+    .entry {
+      margin: 2px 0;
+    }
+    .assistant-entry {
+      color: #aed581;
     }
     .controls {
       margin-top: 8px;
@@ -26,17 +45,20 @@
     button {
       padding: 4px 8px;
       font-size: 12px;
-      cursor: pointer;
       background: #444;
       border: 1px solid #666;
       border-radius: 2px;
       color: #eee;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <h4>Transcript</h4>
-  <div id="tx"></div>
+  <h4>Transcript History</h4>
+  <div id="history"></div>
+
+  <h4>Live Transcript</h4>
+  <div id="live">…listening…</div>
 
   <h4>Assistant</h4>
   <div id="ai"></div>
@@ -47,42 +69,58 @@
   </div>
 
   <script>
-    // Acquire the exposed ipcRenderer from preload.js
     const ipc = window.ipcRenderer;
-
-    const tx = document.getElementById("tx");
-    const ai = document.getElementById("ai");
+    const historyEl = document.getElementById("history");
+    const liveEl    = document.getElementById("live");
+    const aiEl      = document.getElementById("ai");
     const submitBtn = document.getElementById("submit-btn");
-    const clearBtn = document.getElementById("clear-btn");
+    const clearBtn  = document.getElementById("clear-btn");
 
-    // Receive interim or final transcripts
-    ipc.on("transcript", (event, text) => {
-      // always replace existing content explicitly
-      return tx.textContent = text;
+    let committed   = "";   // everything we accepted as “final”
+    let lastPartial = "";   // latest in‑progress phrase
+
+    function render() {
+      liveEl.textContent = `${committed}${lastPartial ? " " + lastPartial : ""}`;
+      liveEl.scrollTop   = liveEl.scrollHeight;
+    }
+
+    ipc.on("transcript-partial", (text) => {
+      lastPartial = text;
+      render();
     });
 
-    // Receive assistant replies
-    ipc.on("assistant-reply", (event, msg) => {
-      const p = document.createElement("p");
-      p.textContent = msg;
-      ai.appendChild(p);
-      ai.scrollTop = ai.scrollHeight;
-      return;
+    // on final, move live → history and clear live
+    ipc.on("transcript-final", (text) => {
+      committed   += (committed ? " " : "") + text;
+      lastPartial  = "";  
+      const div = document.createElement("div"); 
+      div.className = "entry";
+      div.textContent = text;
+      historyEl.appendChild(div);
+      historyEl.scrollTop = historyEl.scrollHeight;
+      render();
     });
 
-    // When the user clicks Submit, send current transcript back to main
+    // assistant replies
+    ipc.on("assistant-reply", (_e, msg) => {
+      const div = document.createElement("div");
+      div.className = "entry assistant-entry";
+      div.textContent = msg;
+      aiEl.appendChild(div);
+      aiEl.scrollTop = aiEl.scrollHeight;
+    });
+
     submitBtn.addEventListener("click", () => {
-      const current = tx.textContent;
-      ipc.send("audio-submit", current);
-      return;
+      ipc.send("audio-submit");
     });
 
-    // When the user clicks Clear, wipe both panes
     clearBtn.addEventListener("click", () => {
-      tx.textContent = "";
-      ai.innerHTML = "";
+      historyEl.innerHTML = "";
+      committed = "";
+      lastPartial = "";
+      render();
+      aiEl.innerHTML = "";
       ipc.send("audio-clear");
-      return;
     });
   </script>
 </body>

@@ -3,13 +3,13 @@ import electron from 'vite-plugin-electron';
 
 export default defineConfig({
   plugins: [
-    electron({
-      entry: 'electron/main.ts',
-      vite: {
-        build: {
-          outDir: 'dist-electron',
-        },
-      },
-    }),
+    electron([
+      {
+        entry: 'electron/main.js',
+        onstart: (options) => {
+          options.startup();
+        }
+      }
+    ]),
   ],
 });

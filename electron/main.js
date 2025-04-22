@@ -1,16 +1,18 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from "electron";
-import * as path from "path";
+import path from "path";
 import { screen } from "electron";
 import screenshot from "screenshot-desktop";
-import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import { spawn } from "child_process";
 import { AssemblyAI } from "assemblyai";
-import { nanoid } from "nanoid"; 
-import * as fs from "fs";
-import * as os from "os";
+import { nanoid } from "nanoid";
+import fs from "fs";
+import os from "os";
 import { pathToFileURL } from "url";
 import dotenv from "dotenv";
-dotenv.config();
 import { OpenAI } from "openai";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 if (!process.env.OPENAI_API_KEY) {
   throw new Error("OPENAI_API_KEY is not defined in the environment variables.");
@@ -25,14 +27,15 @@ const resumeText = fs.readFileSync("resume.txt", "utf-8");
 const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe";
 
 
-let mainWindow: BrowserWindow | null = null;
-let isVisible: boolean = true;
-let screenshots: string[] = [];
-let conversationHistory: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+let mainWindow = null;
+let isVisible = true;
+let screenshots = [];
+let conversationHistory = [];
+let audioHistory = [];
 // ---------- audio‑overlay state ----------
-let audioWin: BrowserWindow | null = null;
-let audioStream: ChildProcessWithoutNullStreams | null = null;
-let aai: ReturnType<typeof aaiClient.realtime.transcriber> | null = null;
+let audioWin = null;
+let audioStream = null;
+let aai = null;
 let audioVisible = false;
 
 function createWindow() {
@@ -64,7 +67,8 @@ function createWindow() {
   mainWindow.on("move", () => {
     if (!audioWin) return;
   
-    const mainBounds = mainWindow!.getBounds();
+    if (!mainWindow) return;
+    const mainBounds = mainWindow.getBounds();
     const margin = 10;
   
     const audioWidth = audioWin.getBounds().width;
@@ -182,7 +186,7 @@ function registerShortcuts() {
   });
 }
 
-function moveWindow(deltaX: number, deltaY: number) {
+function moveWindow(deltaX, deltaY) {
   if (!mainWindow) return;
   const bounds = mainWindow.getBounds();
   mainWindow.setBounds({
@@ -214,7 +218,7 @@ app.on("will-quit", () => {
 
 ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
   try {
-    const files = screenshots.slice(0, 3).map((filePath: string) => ({
+    const files = screenshots.slice(0, 3).map((filePath) => ({
       name: path.basename(filePath),
       buffer: fs.readFileSync(filePath)
     }));
@@ -245,7 +249,7 @@ ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
           role: "user",
           content: [
             { type: "text", text: message || "..." },
-            ...files.map((file: { name: string; buffer: Buffer }) => ({
+            ...files.map((file) => ({
               type: "image_url",
               image_url: {
                 url: `data:image/jpeg;base64,${file.buffer.toString("base64")}`,
@@ -276,70 +280,92 @@ ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
   }
 });
 
-export async function startAudioPipeline(win: BrowserWindow): Promise<void> {
+async function startAudioPipeline(win) {
   if (audioStream !== null || aai !== null) {
+    console.log("[audio] pipeline already running, skipping.");
     return;
   }
 
+  console.log("[audio] spawning FFmpeg…");
   audioStream = spawn(ffmpegPath, [
     "-f", "dshow",
-    "-i", "audio=Microphone Array (Realtek(R) Audio)",
-    "-ac", "1",
-    "-ar", "16000",
-    "-f", "s16le",
-    "-"
+    "-i", "audio=Stereo Mix (Realtek(R) Audio)",
+    "-ac", "1",          // 1 channel  (mono)
+    "-ar", "16000",      // 16 kHz
+    "-f", "s16le",       // raw PCM 16‑bit LE
+    "-"                  // output to stdout pipe
   ]);
 
-  // 2. connect AssemblyAI realtime transcriber
-  try {
-    aai = await aaiClient.realtime.transcriber({
-      sampleRate: 16000
-    });
+  audioStream.stderr.on("data", data => {
+    console.error("[ffmpeg stderr]", data.toString());
+    return;
+  });
+  audioStream.on("error", err => {
+    console.error("[ffmpeg spawn error]", err);
+    return;
+  });
+  audioStream.on("close", (code, signal) => {
+    console.log(`[ffmpeg exited] code=${code}, signal=${signal}`);
+    audioStream = null;
+    return;
+  });
 
-    aai.on("transcript", async (result) => {
-      if (result.message_type !== "FinalTranscript") {
-        return;
-      }
+  console.log("[audio] initializing AssemblyAI transcriber…");
 
-      const userText = result.text;
-      win.webContents.send("transcript", userText);
+  aai = await aaiClient.realtime.transcriber({ sampleRate: 16000 });
 
-      try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: resumeText
-            },
-            {
-              role: "user",
-              content: userText
-            }
-          ]
-        });
+  let   isReady      = false;
+  const bufferQueue  = [];
 
-        const reply = completion.choices[0]?.message?.content ?? "";
-        win.webContents.send("assistant-reply", reply);
-      } catch (err) {
-        console.error("OpenAI response error:", err);
-      }
-    });
+  aai.on("open", ({ sessionId }) => {
+    console.log("[AssemblyAI] WebSocket open – session:", sessionId);
+    isReady = true;
 
-    audioStream.stdout.on("data", (chunk: Buffer) => {
-      if (aai) {
-        aai.sendAudio(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
-      }
-    });
+    /* Flush anything buffered while socket was opening */
+    bufferQueue.forEach(buf => aai.sendAudio(buf));
+    bufferQueue.length = 0;
+    return;
+  });
 
-    aai.on("close", () => {
-      console.log("AssemblyAI connection closed");
-      aai = null;
-    });
-  } catch (error) {
-    console.error("Failed to initialize AssemblyAI transcriber:", error);
+  aai.on("error", err => {
+    console.error("[AssemblyAI] error", err);
+    return;
+  });
+
+  aai.on("close", () => {
+    console.log("[AssemblyAI] connection closed");
     aai = null;
-  }
+    return;
+  });
+
+  aai.on("transcript", result => {
+    const text = result.text.trim();
+    if (!text) return;
+
+    if (result.message_type === "PartialTranscript") {
+      win.webContents.send("transcript-partial", text);
+      console.log("[AssemblyAI] partial transcript", text);
+    } else {
+      win.webContents.send("transcript-final", text);
+      audioHistory.push({ role: "user", content: text });
+    }
+  });
+
+  await aai.connect();
+  console.log("[AssemblyAI] WebSocket connected");
+
+  audioStream.stdout.on("data", chunk => {
+    if (!isReady) {
+      bufferQueue.push(chunk);
+    } else {
+      try {
+        aai.sendAudio(chunk);
+      } catch (sendErr) {
+        console.error("[audio] sendAudio error", sendErr);
+      }
+    }
+    return;
+  });
 }
 
 function stopAudioPipeline() {
@@ -349,31 +375,32 @@ function stopAudioPipeline() {
   aai = null;
 }
 
-ipcMain.on("audio-submit", async (event, transcript: string) => {
-  if (!audioWin) {
-    return;
-  }
+ipcMain.on("audio-submit", async () => {
+  if (!audioWin) return;
+  audioWin.webContents.send("assistant-reply", "…thinking…");
+
+  const messages = [
+    { role: "system", content: resumeText },
+    ...audioHistory.map(m => ({ role: m.role, content: m.content }))
+  ];
 
   try {
-    audioWin.webContents.send("assistant-reply", "…thinking…");
-
-    const completion = await openai.chat.completions.create({
+    const resp = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [
-        { role: "system", content: resumeText },
-        { role: "user", content: transcript }
-      ]
+      messages
     });
-
-    const reply = completion.choices[0]?.message?.content ?? "";
-    return audioWin.webContents.send("assistant-reply", reply);
-  } catch (error) {
-    console.error("Error in audio-submit:", error);
-    return audioWin.webContents.send("assistant-reply", "Error generating response.");
+    const reply = resp.choices[0]?.message?.content ?? "";
+    audioHistory.push({ role: "assistant", content: reply });
+    audioWin.webContents.send("assistant-reply", reply);
+  } catch (e) {
+    console.error("[audio-submit]", e);
+    audioWin.webContents.send("assistant-reply", "Error generating response.");
   }
 });
 
 ipcMain.on("audio-clear", () => {
-  conversationHistory = [];
+  audioHistory = [];
   return;
 });
+
+export { startAudioPipeline, stopAudioPipeline };
