@@ -1,20 +1,39 @@
-
 import { app, BrowserWindow, globalShortcut, ipcMain } from "electron";
 import * as path from "path";
 import { screen } from "electron";
 import screenshot from "screenshot-desktop";
+import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import { AssemblyAI } from "assemblyai";
+import { nanoid } from "nanoid"; 
 import * as fs from "fs";
 import * as os from "os";
 import { pathToFileURL } from "url";
 import dotenv from "dotenv";
 dotenv.config();
 import { OpenAI } from "openai";
+
+if (!process.env.OPENAI_API_KEY) {
+  throw new Error("OPENAI_API_KEY is not defined in the environment variables.");
+}
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+if (!process.env.ASSEMBLYAI_API_KEY) {
+  throw new Error("ASSEMBLYAI_API_KEY is not defined in the environment variables.");
+}
+const aaiClient = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY });
+const transcriber = aaiClient.realtime.transcriber();
+const resumeText = fs.readFileSync("resume.txt", "utf-8");
+const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe";
+
 
 let mainWindow: BrowserWindow | null = null;
 let isVisible: boolean = true;
 let screenshots: string[] = [];
 let conversationHistory: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+// ---------- audio‑overlay state ----------
+let audioWin: BrowserWindow | null = null;
+let audioStream: ChildProcessWithoutNullStreams | null = null;
+let aai: ReturnType<typeof aaiClient.realtime.transcriber> | null = null;
+let audioVisible = false;
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -40,6 +59,21 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     }
+  });
+  
+  mainWindow.on("move", () => {
+    if (!audioWin) return;
+  
+    const mainBounds = mainWindow!.getBounds();
+    const margin = 10;
+  
+    const audioWidth = audioWin.getBounds().width;
+    const audioHeight = audioWin.getBounds().height;
+  
+    const x = mainBounds.x + mainBounds.width + margin;
+    const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
+  
+    audioWin.setBounds({ x, y, width: audioWidth, height: audioHeight });
   });
 
   mainWindow.setIgnoreMouseEvents(false);
@@ -101,6 +135,127 @@ function registerShortcuts() {
   globalShortcut.register("Control+Enter", () => {
     mainWindow?.webContents.send("send-to-api", screenshots);
   });
+
+  globalShortcut.register("Control+B", async () => {
+    if (!audioWin) {
+      if (!mainWindow) return;
+  
+      const mainBounds = mainWindow.getBounds();
+      const margin = 10;
+  
+      const audioWidth = 380;
+      const audioHeight = 260;
+  
+      const x = mainBounds.x + mainBounds.width + margin;
+      const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
+  
+      audioWin = new BrowserWindow({
+        width: audioWidth,
+        height: audioHeight,
+        x: x,
+        y: y,
+        transparent: true,
+        frame: false,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        hasShadow: false,
+        webPreferences: {
+          preload: path.join(__dirname, "preload.js"),
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+  
+      audioWin.loadFile(path.join(__dirname, "../audio.html"));
+    }
+
+    audioVisible = !audioVisible;
+    audioWin.setOpacity(audioVisible ? 1 : 0);
+    audioWin.setIgnoreMouseEvents(!audioVisible, { forward: true });
+
+    if (audioVisible) {
+      startAudioPipeline(audioWin);
+    } else {
+      stopAudioPipeline();
+    }
+  });
+}
+
+export async function startAudioPipeline(win: BrowserWindow): Promise<void> {
+  if (audioStream !== null || aai !== null) {
+    return; // already running
+  }
+
+  // 1. spawn FFmpeg in loopback capture mode
+  audioStream = spawn(ffmpegPath, [
+    "-f", "dshow",
+    "-i", "audio=Stereo Mix (Realtek(R) Audio)", // update this to match your device
+    "-ac", "1",
+    "-ar", "16000",
+    "-f", "s16le",
+    "-"
+  ]);
+
+  // 2. connect AssemblyAI realtime transcriber
+  try {
+    aai = await aaiClient.realtime.transcriber({
+      sampleRate: 16000
+    });
+
+    aai.on("transcript", async (result) => {
+      if (result.message_type !== "FinalTranscript") {
+        return;
+      }
+
+      const userText = result.text;
+      win.webContents.send("transcript", userText);
+
+      // 3. Get personalized response from OpenAI
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: resumeText
+            },
+            {
+              role: "user",
+              content: userText
+            }
+          ]
+        });
+
+        const reply = completion.choices[0]?.message?.content ?? "";
+        win.webContents.send("assistant-reply", reply);
+      } catch (err) {
+        console.error("OpenAI response error:", err);
+      }
+    });
+
+    // 4. pipe audio to AssemblyAI
+    audioStream.stdout.on("data", (chunk: Buffer) => {
+      if (aai) {
+        aai.sendAudio(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+      }
+    });
+
+    aai.on("close", () => {
+      console.log("AssemblyAI connection closed");
+      aai = null;
+    });
+  } catch (error) {
+    console.error("Failed to initialize AssemblyAI transcriber:", error);
+    aai = null;
+  }
+}
+
+function stopAudioPipeline() {
+  audioStream?.kill("SIGKILL");
+  audioStream = null;
+  aai?.close();
+  aai = null;
 }
 
 function moveWindow(deltaX: number, deltaY: number) {

@@ -1,1 +1,1 @@
-"use strict";require("electron");require("path");require("./main-Ba8ezFBL.js");require("fs");require("os");require("url");
+"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});require("electron");require("path");const e=require("./main-LjndS8Bs.js");require("child_process");require("fs");require("os");require("url");exports.startAudioPipeline=e.startAudioPipeline;
