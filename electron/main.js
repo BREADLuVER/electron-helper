@@ -377,19 +377,21 @@ function stopAudioPipeline() {
 
 ipcMain.on("audio-submit", async () => {
   if (!audioWin) return;
+  console.log("[audio] submitting audio history to OpenAI…");
   audioWin.webContents.send("assistant-reply", "…thinking…");
 
   const messages = [
     { role: "system", content: resumeText },
     ...audioHistory.map(m => ({ role: m.role, content: m.content }))
   ];
-
+  
   try {
     const resp = await openai.chat.completions.create({
       model: "gpt-4o",
       messages
     });
     const reply = resp.choices[0]?.message?.content ?? "";
+    console.log("[audio] OpenAI response:", reply);
     audioHistory.push({ role: "assistant", content: reply });
     audioWin.webContents.send("assistant-reply", reply);
   } catch (e) {
