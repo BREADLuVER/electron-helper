@@ -3,3 +3,6 @@ node_modules
 git-filter-repo
 dist/
 dist-electron/
+brad_interview_data.jsonl
+brad_train.jsonl
+brad_val.jsonl

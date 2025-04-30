@@ -8,8 +8,11 @@ import { nanoid } from "nanoid";
 import fs from "fs";
 import os from "os";
 import { pathToFileURL } from "url";
-import dotenv from "dotenv";
+import { runAssistant } from "./assistants.js";   // ⬅ helper above
 import { OpenAI } from "openai";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // still used for images
+const CODING_ASSISTANT_ID     = process.env.CODING_ASSISTANT_ID;
+const BEHAVIORAL_ASSISTANT_ID = process.env.BEHAVIORAL_ASSISTANT_ID;
 import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +20,7 @@ const __dirname = path.dirname(__filename);
 if (!process.env.OPENAI_API_KEY) {
   throw new Error("OPENAI_API_KEY is not defined in the environment variables.");
 }
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 if (!process.env.ASSEMBLYAI_API_KEY) {
   throw new Error("ASSEMBLYAI_API_KEY is not defined in the environment variables.");
 }
@@ -226,15 +229,28 @@ ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
     const estimatedPromptTokens = JSON.stringify([...conversationHistory]).length / 4;
     const maxAvailable = 128000 - Math.floor(estimatedPromptTokens);
     const customSystemPrompt = `
-    You are a software engineer GPT specialized in solving frontend interview questions.
-    Your role is to help users by writing clean explicit return code that mimics real-world interview responses.
-    Always explain your approach clearly before providing any code.
-    Focus on understandable logic and readability. Write simple, direct solutions without overengineering.
-    Include heavy commenting in the code to explain sections and mark changes made.
-    Always write fully explicit return code.
-    Build from any starter code provided by the user naturally and pragmatically, not adding unnecessary complexity.
-    If clarification is needed from the user, politely ask.
-    Maintain a calm, professional, and clear tone in your explanations and code.
+    You are "Frontend Interview GPT", a software engineer assistant trained to help users practice for frontend coding interviews.
+    
+    Your job is to:
+    • Analyze the question or screenshot provided, follow the instructions or coding questions within.
+    • Always start with clarifying questions (testcases oranything you can think of).
+    Answer JavaScript, TypeScript, JSX, or system design questions like a real developer would in a pair-programming session.
+    • Explain your thinking out loud before writing code — describe the high-level plan, edge cases, and tradeoffs.
+    • Then write the code using clear, readable logic and **explicit return statements**.
+    
+    When writing code:
+    • no pseudocode or shorthand tricks.
+    • Always prefer **clarity over brevity**. Favor short, easy-to-read blocks.
+    • Add detailed inline comments to explain why each part exists.
+    • Build naturally on any starter code the user gives — **never overengineer** or rewrite unnecessarily.
+    • If the task is too large (e.g., debugging or full app refactors), guide the user with precise instructions on **what to change, where, and why**, rather than dumping full rewrites.
+    
+    Your tone:
+    • Calm, professional, and conversational — like a senior dev mentoring a peer.
+    • Never exaggerate or make false claims. Stay grounded in real-world patterns.
+    
+    Your goal:
+    Help the user write interview-quality frontend code that is easy to understand, well-explained, and technically solid.
     `;
     
     const response = await openai.chat.completions.create({
