@@ -11,8 +11,8 @@ import { pathToFileURL } from "url";
 import { runAssistant } from "./assistants.js";   // ⬅ helper above
 import { OpenAI } from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // still used for images
-const CODING_ASSISTANT_ID     = process.env.CODING_ASSISTANT_ID;
 const BEHAVIORAL_ASSISTANT_ID = process.env.BEHAVIORAL_ASSISTANT_ID;
+const FRONTEND_ASSISTANT_ID = process.env.FRONTEND_ASSISTANT_ID;
 import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,6 +121,8 @@ function registerShortcuts() {
     if (!mainWindow) return;
 
     mainWindow.setOpacity(0);
+    audioWin?.setOpacity(0);
+    audioWin?.setIgnoreMouseEvents(true, { forward: true });
     mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
     setTimeout(async () => {
@@ -135,6 +137,8 @@ function registerShortcuts() {
       } finally {
         mainWindow?.setOpacity(1);
         mainWindow?.setIgnoreMouseEvents(false);
+        audioWin?.setOpacity(iflePath ? 1 : 0);
+        audioWin?.setIgnoreMouseEvents(false);
       }
     }, 300);
   });
@@ -221,65 +225,29 @@ app.on("will-quit", () => {
 
 ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
   try {
-    const files = screenshots.slice(0, 3).map((filePath) => ({
-      name: path.basename(filePath),
-      buffer: fs.readFileSync(filePath)
-    }));
+    const uploadedImages = await Promise.all(
+      screenshots.slice(0, 3).map(async (filePath) => {
+        const uploaded = await openai.files.create({
+          file: fs.createReadStream(filePath),
+          purpose: "assistants",
+        });
+        return uploaded.id;
+      })
+    );
 
-    const estimatedPromptTokens = JSON.stringify([...conversationHistory]).length / 4;
-    const maxAvailable = 128000 - Math.floor(estimatedPromptTokens);
-    const customSystemPrompt = `
-    You are "Frontend Interview GPT", a software engineer assistant trained to help users practice for frontend coding interviews.
-    
-    Your job is to:
-    • Analyze the question or screenshot provided, follow the instructions or coding questions within.
-    • Always start with clarifying questions (testcases oranything you can think of).
-    Answer JavaScript, TypeScript, JSX, or system design questions like a real developer would in a pair-programming session.
-    • Explain your thinking out loud before writing code — describe the high-level plan, edge cases, and tradeoffs.
-    • Then write the code using clear, readable logic and **explicit return statements**.
-    
-    When writing code:
-    • no pseudocode or shorthand tricks.
-    • Always prefer **clarity over brevity**. Favor short, easy-to-read blocks.
-    • Add detailed inline comments to explain why each part exists.
-    • Build naturally on any starter code the user gives — **never overengineer** or rewrite unnecessarily.
-    • If the task is too large (e.g., debugging or full app refactors), guide the user with precise instructions on **what to change, where, and why**, rather than dumping full rewrites.
-    
-    Your tone:
-    • Calm, professional, and conversational — like a senior dev mentoring a peer.
-    • Never exaggerate or make false claims. Stay grounded in real-world patterns.
-    
-    Your goal:
-    Help the user write interview-quality frontend code that is easy to understand, well-explained, and technically solid.
-    `;
-    
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: [{ type: "text", text: customSystemPrompt }]
-        },
-        ...conversationHistory,
-        {
-          role: "user",
-          content: [
-            { type: "text", text: message || "..." },
-            ...files.map((file) => ({
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${file.buffer.toString("base64")}`,
-              },
-            })),
-          ]
-        }
+    const userMessage = {
+      role: "user",
+      content: [
+        { type: "text", text: message || "..." },
+        ...uploadedImages.map((fileId) => ({
+          type: "image_file",
+          image_file: { file_id: fileId }
+        })),
       ],
-      max_tokens: Math.min(4096, maxAvailable),
-    });
+    };
 
-    // console.log("Sending message + screenshots:", message, screenshots);
+    const reply = await runAssistant(FRONTEND_ASSISTANT_ID, userMessage);
 
-    const reply = response.choices?.[0]?.message?.content || "No response";
     event.sender.send("api-response", reply);
     conversationHistory.push({
       role: "user",
@@ -363,7 +331,6 @@ async function startAudioPipeline(win) {
       console.log("[AssemblyAI] partial transcript", text);
     } else {
       win.webContents.send("transcript-final", text);
-      audioHistory.push({ role: "user", content: text });
     }
   });
 
@@ -391,8 +358,15 @@ function stopAudioPipeline() {
   aai = null;
 }
 
-ipcMain.on("audio-submit", async () => {
+let audioBusy = false;
+
+ipcMain.on("audio-submit", async (_evt, question) => {
   if (!audioWin) return;
+  if (audioBusy) return;
+  audioBusy = true;
+
+  if (!question) { audioBusy = false; return; }
+  audioHistory.push({ role: "user", content: question });
   console.log("[audio] submitting audio history to OpenAI…");
   audioWin.webContents.send("assistant-reply", "…thinking…");
 
@@ -402,17 +376,18 @@ ipcMain.on("audio-submit", async () => {
   ];
   
   try {
-    const resp = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages
-    });
-    const reply = resp.choices[0]?.message?.content ?? "";
+    const reply = await runAssistant(
+        BEHAVIORAL_ASSISTANT_ID,
+        { role: "user", content: audioHistory.map(m => m.content).join("\n") }
+      );
     console.log("[audio] OpenAI response:", reply);
     audioHistory.push({ role: "assistant", content: reply });
     audioWin.webContents.send("assistant-reply", reply);
   } catch (e) {
     console.error("[audio-submit]", e);
     audioWin.webContents.send("assistant-reply", "Error generating response.");
+  } finally {
+    audioBusy = false;
   }
 });
 

@@ -80,29 +80,29 @@
     let lastPartial = "";   // latest in‑progress phrase
 
     function render() {
-      liveEl.textContent = `${committed}${lastPartial ? " " + lastPartial : ""}`;
-      liveEl.scrollTop   = liveEl.scrollHeight;
+      liveEl.textContent = lastPartial; 
+      liveEl.scrollTop   = liveEl.scrollHeight; // Add this line back to maintain scrolling behavior
     }
-
+    
     ipc.on("transcript-partial", (text) => {
       lastPartial = text;
       render();
     });
 
-    // on final, move live → history and clear live
-    ipc.on("transcript-final", (text) => {
-      committed   += (committed ? " " : "") + text;
-      lastPartial  = "";  
-      const div = document.createElement("div"); 
-      div.className = "entry";
-      div.textContent = text;
-      historyEl.appendChild(div);
-      historyEl.scrollTop = historyEl.scrollHeight;
-      render();
-    });
+    // // on final, move live → history and clear live
+    // ipc.on("transcript-final", (text) => {
+    //   committed   += (committed ? " " : "") + text;
+    //   lastPartial  = "";  
+    //   const div = document.createElement("div"); 
+    //   div.className = "entry";
+    //   div.textContent = text;
+    //   historyEl.appendChild(div);
+    //   historyEl.scrollTop = historyEl.scrollHeight;
+    //   render();
+    // });
 
     // assistant replies
-    ipc.on("assistant-reply", (_e, msg) => {
+    ipc.on("assistant-reply", (msg) => {
       const div = document.createElement("div");
       div.className = "entry assistant-entry";
       div.textContent = msg;
@@ -111,7 +111,12 @@
     });
 
     submitBtn.addEventListener("click", () => {
-      ipc.send("audio-submit");
+      if (!lastPartial.trim()) return;
+
+      committed  = lastPartial.trim();
+      ipc.send("audio-submit", committed);
+      lastPartial = "";
+      render();
     });
 
     clearBtn.addEventListener("click", () => {
@@ -121,6 +126,27 @@
       render();
       aiEl.innerHTML = "";
       ipc.send("audio-clear");
+    });
+
+    let liveAssistantDiv = null;
+    ipc.on("assistant-stream-start", () => {
+      liveAssistantDiv = document.createElement("div");
+      liveAssistantDiv.className = "entry assistant-entry";
+      aiEl.appendChild(liveAssistantDiv);
+      aiEl.scrollTop = aiEl.scrollHeight;
+    });
+
+    ipc.on("assistant-stream-data", (token) => {
+      if (liveAssistantDiv) {
+        liveAssistantDiv.textContent += token;
+        aiEl.scrollTop = aiEl.scrollHeight;
+      }
+    });
+
+    ipc.on("assistant-stream-end", () => {
+      if (liveAssistantDiv) {
+        liveAssistantDiv = null;
+      }
     });
   </script>
 </body>
