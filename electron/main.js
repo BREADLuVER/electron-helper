@@ -383,27 +383,28 @@ ipcMain.on("audio-submit", async (_evt, question) => {
   if (!question) { audioBusy = false; return; }
   audioHistory.push({ role: "user", content: question });
   console.log("[audio] submitting audio history to OpenAI…");
-  audioWin.webContents.send("assistant-reply", "…thinking…");
-
-  const messages = [
-    { role: "system", content: resumeText },
-    ...audioHistory.map(m => ({ role: m.role, content: m.content }))
-  ];
-  
+  audioWin.webContents.send("assistant-stream-start");
+  const userMsg = { role: "user", content: question };
+  let finalText = "";
   try {
-    const reply = await runAssistant(
+      await runAssistantStream(                        // ② same helper you use for screenshots
         BEHAVIORAL_ASSISTANT_ID,
-        { role: "user", content: audioHistory.map(m => m.content).join("\n") }
+        userMsg,
+        (token) => {                                  // ③ drip every token
+          audioWin.webContents.send("assistant-stream-data", token);
+          finalText += token;
+        }
       );
-    console.log("[audio] OpenAI response:", reply);
-    audioHistory.push({ role: "assistant", content: reply });
-    audioWin.webContents.send("assistant-reply", reply);
-  } catch (e) {
-    console.error("[audio-submit]", e);
-    audioWin.webContents.send("assistant-reply", "Error generating response.");
-  } finally {
-    audioBusy = false;
-  }
+      audioWin.webContents.send("assistant-stream-end");   // ④ done
+      console.log("[audio] OpenAI response:", reply);
+      audioHistory.push({ role: "assistant", content: finalText });
+    } catch (e) {
+      console.error("[audio-submit]", e);
+      audioWin.webContents.send("assistant-stream-end");
+      audioWin.webContents.send("assistant-reply", "Error generating response.");
+    } finally {
+      audioBusy = false;
+    }
 });
 
 ipcMain.on("audio-clear", () => {

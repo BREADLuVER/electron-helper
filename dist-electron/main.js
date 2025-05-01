@@ -1,6 +1,6 @@
 import "electron";
 import "path";
-import { s, a } from "./main-CnBCJpuc.js";
+import { s, a } from "./main-TWwdgnLs.js";
 import "child_process";
 import "fs";
 import "os";
