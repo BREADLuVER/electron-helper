@@ -9,6 +9,7 @@ import fs from "fs";
 import os from "os";
 import { pathToFileURL } from "url";
 import { runAssistant } from "./assistants.js";   // ⬅ helper above
+import { runAssistantStream } from "./runAssistantStream.js"; // ⬅ helper above
 import { OpenAI } from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // still used for images
 const BEHAVIORAL_ASSISTANT_ID = process.env.BEHAVIORAL_ASSISTANT_ID;
@@ -137,7 +138,7 @@ function registerShortcuts() {
       } finally {
         mainWindow?.setOpacity(1);
         mainWindow?.setIgnoreMouseEvents(false);
-        audioWin?.setOpacity(iflePath ? 1 : 0);
+        audioWin?.setOpacity(img ? 1 : 0);
         audioWin?.setIgnoreMouseEvents(false);
       }
     }, 300);
@@ -225,41 +226,55 @@ app.on("will-quit", () => {
 
 ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
   try {
-    const uploadedImages = await Promise.all(
-      screenshots.slice(0, 3).map(async (filePath) => {
-        const uploaded = await openai.files.create({
-          file: fs.createReadStream(filePath),
+    // 0) pre-flight – tell renderer a stream is starting
+    event.sender.send("assistant-stream-start");
+
+    /* 1) upload screenshots exactly as before … */
+    const uploaded = await Promise.all(
+      screenshots.slice(0, 3).map(async fp => {
+        const { id } = await openai.files.create({
+          file: fs.createReadStream(fp),
           purpose: "assistants",
         });
-        return uploaded.id;
+        return id;
       })
     );
 
-    const userMessage = {
+    const userMsg = {
       role: "user",
       content: [
         { type: "text", text: message || "..." },
-        ...uploadedImages.map((fileId) => ({
+        ...uploaded.map(id => ({
           type: "image_file",
-          image_file: { file_id: fileId }
+          image_file: { file_id: id },
         })),
       ],
     };
 
-    const reply = await runAssistant(FRONTEND_ASSISTANT_ID, userMessage);
+    console.log("[assistant] user message:", userMsg);
+    console.log("[assistant] conversation history:", conversationHistory);
 
-    event.sender.send("api-response", reply);
-    conversationHistory.push({
-      role: "user",
-      content: [{ type: "text", text: message }]
-    });
+    // 2) stream assistant reply
+    let finalText = "";
+    await runAssistantStream(
+      FRONTEND_ASSISTANT_ID,
+      userMsg,
+      (token) => {
+        event.sender.send("assistant-stream-data", token); // drip to UI
+        finalText += token;
+      }
+    );
 
-    conversationHistory.push({
-      role: "assistant",
-      content: [{ type: "text", text: reply }]
-    });
+    console.log("[assistant] final text:", finalText);
+    // 3) end-of-stream marker
+    event.sender.send("assistant-stream-end");
+
+    // 4) keep history if you want it
+    conversationHistory.push({ role: "user",      content: [{ type:"text", text: message }] });
+    conversationHistory.push({ role: "assistant", content: [{ type:"text", text: finalText }] });
   } catch (err) {
     console.error("OpenAI Error:", err);
+    event.sender.send("assistant-stream-end");
     event.sender.send("api-response", "Failed to contact OpenAI.");
   }
 });

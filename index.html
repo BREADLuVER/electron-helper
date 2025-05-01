@@ -143,6 +143,27 @@
         screenshotsEl.innerHTML = "";
       });
 
+      let liveDiv = null;
+
+      ipcRenderer.on("assistant-stream-start", () => {
+        liveDiv = document.createElement("div");
+        liveDiv.className = "reply";
+        responseEl.appendChild(liveDiv);
+        responseEl.scrollTop = responseEl.scrollHeight;
+      });
+
+      ipcRenderer.on("assistant-stream-data", (...args) => {
+        const token = typeof args[0] === "string" ? args[0] : args[1];
+        if (liveDiv) {
+          liveDiv.innerHTML += token;
+          responseEl.scrollTop = responseEl.scrollHeight;
+        }
+      });
+
+      ipcRenderer.on("assistant-stream-end", () => {
+        liveDiv = null;               // keep final markup; just stop appending
+      });
+
       ipcRenderer.on("api-response", (reply) => {
         const replyDiv = document.createElement("div");
         replyDiv.className = "reply";

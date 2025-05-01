@@ -4,6 +4,9 @@ const VALID_CHANNELS = [
   "screenshot",
   "send-to-api",
   "api-response",
+  "assistant-stream-start",
+  "assistant-stream-data",
+  "assistant-stream-end",
   "cleared",
 
   "transcript-partial",
@@ -22,7 +25,7 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
 
   on(channel, listener) {
     if (VALID_CHANNELS.includes(channel)) {
-      const wrapped = (_ev, ...args) => listener(...args);
+      const wrapped = (_event, ...args) => listener(...args);
       ipcRenderer.on(channel, wrapped);
       return () => ipcRenderer.removeListener(channel, wrapped);
     }
@@ -31,7 +34,7 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
 
   once(channel, listener) {
     if (VALID_CHANNELS.includes(channel)) {
-      ipcRenderer.once(channel, (_ev, ...args) => listener(...args));
+      ipcRenderer.once(channel, (_event, ...args) => listener(...args));
     }
   },
 });
