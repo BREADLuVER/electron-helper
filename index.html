@@ -76,6 +76,17 @@
       }
     </style>    
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script>
+      marked.setOptions({
+        gfm: true,                   // fenced blocks, tables, strike‑through…
+        breaks: true,                // turn single \n into <br> – fixes line breaks
+        highlight(code, lang) {      // highlight.js auto‑detect
+          return hljs.highlightAuto(code).value;
+        }
+      });
+    </script>
   </head>
   <body>
     <h2>Captured Screenshots</h2>
@@ -144,24 +155,28 @@
       });
 
       let liveDiv = null;
+      let liveMarkdown = "";
 
       ipcRenderer.on("assistant-stream-start", () => {
         liveDiv = document.createElement("div");
         liveDiv.className = "reply";
         responseEl.appendChild(liveDiv);
         responseEl.scrollTop = responseEl.scrollHeight;
+        liveMarkdown = "";
       });
 
       ipcRenderer.on("assistant-stream-data", (...args) => {
         const token = typeof args[0] === "string" ? args[0] : args[1];
-        if (liveDiv) {
-          liveDiv.innerHTML += token;
-          responseEl.scrollTop = responseEl.scrollHeight;
-        }
+        if (!liveDiv) return;
+        liveMarkdown += token;
+        liveDiv.innerHTML = marked.parse(liveMarkdown);
+        responseEl.scrollTop = responseEl.scrollHeight;
       });
 
       ipcRenderer.on("assistant-stream-end", () => {
-        liveDiv = null;               // keep final markup; just stop appending
+        liveDiv = null;
+        hljs.highlightAll();
+        liveDiv = null;
       });
 
       ipcRenderer.on("api-response", (reply) => {
@@ -190,7 +205,5 @@
         message = "";
       });
     </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
   </body>
 </html>
