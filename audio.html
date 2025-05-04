@@ -90,13 +90,15 @@
     const aiEl      = document.getElementById("ai");
     const submitBtn = document.getElementById("submit-btn");
     const clearBtn  = document.getElementById("clear-btn");
-
-    let committed   = "";   // everything we accepted as “final”
-    let lastPartial = "";   // latest in‑progress phrase
-
-    function render() {
-      liveEl.textContent = lastPartial; 
-      liveEl.scrollTop   = liveEl.scrollHeight;
+    const pinnedToBottom = c => c.scrollTop + c.clientHeight >= c.scrollHeight - 5;
+    
+    let currentText  = "";   // everything we’ve finalised since last Submit
+    let lastPartial  = "";   // the in‑flight phrase AssemblyAI is still updating
+    let liveAIDiv    = null;
+  
+    function renderLive() {
+      liveEl.textContent = `${currentText} ${lastPartial}`.trim();
+      if (pinnedToBottom(liveEl)) liveEl.scrollTop = liveEl.scrollHeight;
     }
     
     function shouldAutoScroll(container) {
@@ -104,8 +106,18 @@
     }
 
     ipc.on("transcript-partial", (text) => {
-      lastPartial = text;
-      render();
+        lastPartial = text.trim();
+        renderLive();
+    });
+
+    ipc.on("transcript-final", (text) => {
+      if (!text.trim()) return;
+      
+      currentText = `${currentText} ${text.trim()}`.trim();
+      // ① add to visible history
+      const div = document.createElement("div");
+      lastPartial = "";
+      renderLive();
     });
 
     // assistant replies
@@ -117,39 +129,45 @@
     });
 
     submitBtn.addEventListener("click", () => {
-      if (!lastPartial.trim()) return;
+      const message = `${currentText} ${lastPartial}`.trim();
+      if (!message) return;
 
-      committed  = lastPartial.trim();
-      ipc.send("audio-submit", committed);
+      const div = document.createElement("div");
+      div.className = "entry";
+      div.textContent = message;
+      historyEl.appendChild(div);
+      if (pinnedToBottom(historyEl))
+        historyEl.scrollTop = historyEl.scrollHeight;
+      ipc.send("audio-submit", message);
+      currentText = "";
       lastPartial = "";
-      render();
+      renderLive();
     });
-
+    
     clearBtn.addEventListener("click", () => {
       historyEl.innerHTML = "";
-      committed = "";
+      currentText = "";
       lastPartial = "";
-      render();
       aiEl.innerHTML = "";
+      renderLive();
       ipc.send("audio-clear");
     });
 
-    let liveAssistantDiv = null;
     ipc.on("assistant-stream-start", () => {
-      liveAssistantDiv = document.createElement("div");
-      liveAssistantDiv.className = "entry assistant-entry";
-      aiEl.appendChild(liveAssistantDiv);
+      liveAIDiv = document.createElement("div");
+      liveAIDiv.className = "entry assistant-entry";
+      aiEl.appendChild(liveAIDiv);
     });
 
     ipc.on("assistant-stream-data", (token) => {
-      if (liveAssistantDiv) {
-        liveAssistantDiv.textContent += token;
+      if (liveAIDiv) {
+        liveAIDiv.textContent += token;
       }
     });
 
     ipc.on("assistant-stream-end", () => {
-      if (liveAssistantDiv) {
-        liveAssistantDiv = null;
+      if (liveAIDiv) {
+        liveAIDiv = null;
       }
     });
   </script>
