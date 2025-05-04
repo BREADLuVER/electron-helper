@@ -80,6 +80,7 @@
 
   <div class="controls">
     <button id="submit-btn">Submit</button>
+    <button id="clear-partial">CP</button>
     <button id="clear-btn">Clear</button>
   </div>
 
@@ -90,12 +91,14 @@
     const aiEl      = document.getElementById("ai");
     const submitBtn = document.getElementById("submit-btn");
     const clearBtn  = document.getElementById("clear-btn");
+    const clearPartialBtn = document.getElementById("clear-partial");
     const pinnedToBottom = c => c.scrollTop + c.clientHeight >= c.scrollHeight - 5;
     
     let currentText  = "";   // everything we’ve finalised since last Submit
     let lastPartial  = "";   // the in‑flight phrase AssemblyAI is still updating
     let liveAIDiv    = null;
-  
+    let flushUntilFinal  = false;
+
     function renderLive() {
       liveEl.textContent = `${currentText} ${lastPartial}`.trim();
       if (pinnedToBottom(liveEl)) liveEl.scrollTop = liveEl.scrollHeight;
@@ -106,15 +109,20 @@
     }
 
     ipc.on("transcript-partial", (text) => {
-        lastPartial = text.trim();
-        renderLive();
+      if (flushUntilFinal) return;
+      lastPartial = text.trim();
+      renderLive();
     });
 
     ipc.on("transcript-final", (text) => {
+      if (flushUntilFinal) {
+        flushUntilFinal = false;
+        return;
+      }
+
       if (!text.trim()) return;
       
       currentText = `${currentText} ${text.trim()}`.trim();
-      // ① add to visible history
       const div = document.createElement("div");
       lastPartial = "";
       renderLive();
@@ -139,6 +147,7 @@
       if (pinnedToBottom(historyEl))
         historyEl.scrollTop = historyEl.scrollHeight;
       ipc.send("audio-submit", message);
+      flushUntilFinal = lastPartial.length > 0;
       currentText = "";
       lastPartial = "";
       renderLive();
@@ -169,6 +178,11 @@
       if (liveAIDiv) {
         liveAIDiv = null;
       }
+    });
+  
+    clearPartialBtn.addEventListener("click", () => {
+      lastPartial = "";
+      renderLive();
     });
   </script>
 </body>
