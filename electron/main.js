@@ -45,8 +45,8 @@ let audioVisible = false;
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  const winWidth = 500;
-  const winHeight = 600;
+  const winWidth = 400;
+  const winHeight = 500;
   const x = Math.floor((width - winWidth) / 2);
   const y = Math.floor((height - winHeight) / 2);
 
@@ -118,7 +118,7 @@ function registerShortcuts() {
   globalShortcut.register("Control+Right", () => moveWindow(10, 0));
 
   globalShortcut.register("Control+G", async () => {
-    if (screenshots.length >= 3) return;
+    if (screenshots.length > 5) return;
     if (!mainWindow) return;
 
     mainWindow.setOpacity(0);
@@ -155,8 +155,8 @@ function registerShortcuts() {
       const mainBounds = mainWindow.getBounds();
       const margin = 10;
   
-      const audioWidth = 500;
-      const audioHeight = 600;
+      const audioWidth = 400;
+      const audioHeight = 500;
   
       const x = mainBounds.x + mainBounds.width + margin;
       const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
