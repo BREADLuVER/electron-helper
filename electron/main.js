@@ -4,11 +4,9 @@ import { screen } from "electron";
 import screenshot from "screenshot-desktop";
 import { spawn } from "child_process";
 import { AssemblyAI } from "assemblyai";
-import { nanoid } from "nanoid";
 import fs from "fs";
 import os from "os";
 import { pathToFileURL } from "url";
-import { runAssistant } from "./assistants.js";   // ⬅ helper above
 import { runAssistantStream } from "./runAssistantStream.js"; // ⬅ helper above
 import { OpenAI } from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // still used for images
@@ -26,10 +24,7 @@ if (!process.env.ASSEMBLYAI_API_KEY) {
   throw new Error("ASSEMBLYAI_API_KEY is not defined in the environment variables.");
 }
 const aaiClient = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY });
-const transcriber = aaiClient.realtime.transcriber();
-const resumeText = fs.readFileSync("resume.txt", "utf-8");
 const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe";
-
 
 let mainWindow = null;
 let isVisible = true;
@@ -148,7 +143,7 @@ function registerShortcuts() {
     mainWindow?.webContents.send("send-to-api", screenshots);
   });
 
-  globalShortcut.register("Control+B", async () => {
+  globalShortcut.register("F5", async () => {
     if (!audioWin) {
       if (!mainWindow) return;
   

@@ -1,6 +1,6 @@
 import "electron";
 import "path";
-import { s as a, a as d } from "./main-DolwdSoB.js";
+import { s as a, a as d } from "./main-Xx3Ba76g.js";
 import "child_process";
 import "fs";
 import "os";
