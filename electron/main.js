@@ -46,6 +46,11 @@ Question type: FOLLOW-UP
 • Continue mid-thought.
 • No intros, no conclusions — just give the detail.
 • Max 2 sentences.”
+
+Question type: GENERAL TECH CONCEPT
+• Keep it short and simple — like explaining to a junior dev.
+• Use plain English: 2–3 sentence paragraph or 3 bullets.
+• Don’t reference personal projects or experience.
 `;
 
 
