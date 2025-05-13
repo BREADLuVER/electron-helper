@@ -32,15 +32,11 @@ const EXAMPLES = [
 ];
 const RUN_INSTRUCTION = `
 Answer like you're thinking out loud in an interview — not writing an article.
-Speak casually, like you're explaining to a curious 9th grader.
-Avoid summaries, reflections, and polished wrap-ups.
-
-If the question is a follow-up (about a specific part of a known project),
-→ do *not* reintroduce the project. Just continue from memory.
-Start mid-thought: “Yeah, so what we did there was...”, “That part was tricky...”
-
-Use phrases like: “I remember we…”, “One tricky part was…”, “So what we ended up doing…”
-Avoid: “This ultimately improved…”, “We ensured that…”, “It was important to…”
+Keep it casual and clear, like you're explaining to a curious 9th grader.
+No summaries, no reflection, no polished wrap‑ups.
+Use “I remember…”, “One tricky part was…”, “We ran into…” to sound natural.
+Avoid “led to increased…”, “ultimately improved…”, “ensured alignment…”.
+Never add reflective conclusions or lessons learned unless the question explicitly asks for it ("What did you learn?", "What was the impact?").
 `;
 
 
