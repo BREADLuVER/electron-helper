@@ -37,11 +37,17 @@ No summaries, no reflection, no polished wrap‑ups.
 Flow naturally. Light connectors
 Show your thoughts.
 Dodge jargon. Spell acronyms or swap for plain English.
+Question type: EXPERIENCE DETAIL
+• Skip intro. Dive right into what you did.
+• Talk through one or two specific things that worked.
+• Don’t summarize the impact unless asked.
+
 Question type: FOLLOW-UP
 • Continue mid-thought.
 • No intros, no conclusions — just give the detail.
 • Max 2 sentences.”
 `;
+
 
 
 let mainWindow = null;
