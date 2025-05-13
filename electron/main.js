@@ -26,6 +26,24 @@ if (!process.env.ASSEMBLYAI_API_KEY) {
 const aaiClient = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe";
 
+const TONE_CUE_HEADER = `When providing a answer, follow the tone and voice shown in these examples: natural, messy, in‑the‑moment.`;
+const EXAMPLES = [
+  "Yeah, so when I joined, the QA team was still using this old internal tool that basically just dumped raw logs. If you wanted to figure out what went wrong — like some color flickering or a sync issue — you had to open these massive text files and scan through timestamps.It worked, but it was super manual and didn’t scale well, especially with newer GPU features like HDR or variable refresh. That’s where the idea for the Display Insights Portal came in — we wanted to build a web tool that could actually show real-time telemetry, so engineers could catch problems as they happened, instead of digging through logs afterward.",
+];
+const RUN_INSTRUCTION = `
+Answer like you're thinking out loud in an interview — not writing an article.
+Speak casually, like you're explaining to a curious 9th grader.
+Avoid summaries, reflections, and polished wrap-ups.
+
+If the question is a follow-up (about a specific part of a known project),
+→ do *not* reintroduce the project. Just continue from memory.
+Start mid-thought: “Yeah, so what we did there was...”, “That part was tricky...”
+
+Use phrases like: “I remember we…”, “One tricky part was…”, “So what we ended up doing…”
+Avoid: “This ultimately improved…”, “We ensured that…”, “It was important to…”
+`;
+
+
 let mainWindow = null;
 let isVisible = true;
 let screenshots = [];
@@ -368,6 +386,21 @@ function stopAudioPipeline() {
   aai = null;
 }
 
+function wrapQuestion(raw) {
+  const fewShot = EXAMPLES.slice(0, 3).join("\n\n");
+  return `
+${TONE_CUE_HEADER}
+
+---
+${fewShot}
+---
+
+${RUN_INSTRUCTION.trim()}
+
+${raw.trim()}
+`.trim();
+}
+
 let audioBusy = false;
 
 ipcMain.on("audio-submit", async (_evt, question) => {
@@ -379,7 +412,8 @@ ipcMain.on("audio-submit", async (_evt, question) => {
   audioHistory.push({ role: "user", content: question });
   console.log("[audio] submitting audio history to OpenAI…");
   audioWin.webContents.send("assistant-stream-start");
-  const userMsg = { role: "user", content: question };
+  const wrapped = wrapQuestion(question);
+  const userMsg = { role: "user", content: wrapped };
   let finalText = "";
   try {
       await runAssistantStream(                        // ② same helper you use for screenshots
