@@ -32,11 +32,15 @@ const EXAMPLES = [
 ];
 const RUN_INSTRUCTION = `
 Answer like you're thinking out loud in an interview — not writing an article.
-Keep it casual and clear, like you're explaining to a curious 9th grader.
+Sound like you’re talking to a non-fluent English speaker peer, avoid formal verbs (“ensured”, “strive”, “emphasized”).
 No summaries, no reflection, no polished wrap‑ups.
-Use “I remember…”, “One tricky part was…”, “We ran into…” to sound natural.
-Avoid “led to increased…”, “ultimately improved…”, “ensured alignment…”.
-Never add reflective conclusions or lessons learned unless the question explicitly asks for it ("What did you learn?", "What was the impact?").
+Flow naturally. Light connectors
+Show your thoughts.
+Dodge jargon. Spell acronyms or swap for plain English.
+Question type: FOLLOW-UP
+• Continue mid-thought.
+• No intros, no conclusions — just give the detail.
+• Max 2 sentences.”
 `;
 
 
