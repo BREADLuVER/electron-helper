@@ -69,8 +69,8 @@ let audioVisible = false;
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  const winWidth = 400;
-  const winHeight = 500;
+  const winWidth = 500;
+  const winHeight = 600;
   const x = Math.floor((width - winWidth) / 2);
   const y = Math.floor((height - winHeight) / 2);
 
@@ -142,7 +142,6 @@ function registerShortcuts() {
   globalShortcut.register("Control+Right", () => moveWindow(10, 0));
 
   globalShortcut.register("Control+G", async () => {
-    if (screenshots.length > 5) return;
     if (!mainWindow) return;
 
     mainWindow.setOpacity(0);
@@ -170,6 +169,7 @@ function registerShortcuts() {
 
   globalShortcut.register("Control+Enter", () => {
     mainWindow?.webContents.send("send-to-api", screenshots);
+    screenshots = [];
   });
 
   globalShortcut.register("F5", async () => {

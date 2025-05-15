@@ -35,7 +35,21 @@ export async function runAssistantStream(
      the deprecated runs.createAndStream()                                   */
   const stream = await openai.beta.threads.runs.create(
     threadId,
-    { assistant_id: assistantId, stream: true }
+    { assistant_id: assistantId, instructions: `
+      If provided a general coding question
+      1. Read through the question and instructions carefully, identify initial code, testing code, or test cases
+      2. Explain your understanding of the question
+      3. Provide your approach so interviewer can verify our approach, follow these steps
+        • Think out loud: “Here’s what I assume, here’s what I’ll build, here’s roughly how.”
+        • Describe the goal, what component/hook/HOC will be created, what will be returned, what file/folder should we create (if necessary), and where it belongs in the repository (if necessary).
+      4. Then write clean, readable code with explicit return statements and clear inline comments that focus on: when async logic runs, how props/state are used, and what is returned/rendered
+
+      If asked about follow-ups or provided error messages intended for debugging
+      1. First, figure out what the error message means and what could cause it.
+      2. Point out the specific part of the code that’s likely broken.
+      3. Suggest practical fixes and explain why they would work.
+      Use real-world reasoning: console logs, variable checks, common mistakes. Don’t rewrite the whole thing unless you have to.`
+      , stream: true }
   );
 
   let full = "";
