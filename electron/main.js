@@ -2,6 +2,8 @@ import { app, BrowserWindow, globalShortcut, ipcMain } from "electron";
 import path from "path";
 import { screen } from "electron";
 import screenshot from "screenshot-desktop";
+import pkg from "ocr-space-api-wrapper";
+const { ocrSpace } = pkg;
 import { spawn } from "child_process";
 import { AssemblyAI } from "assemblyai";
 import fs from "fs";
@@ -23,6 +25,11 @@ if (!process.env.OPENAI_API_KEY) {
 if (!process.env.ASSEMBLYAI_API_KEY) {
   throw new Error("ASSEMBLYAI_API_KEY is not defined in the environment variables.");
 }
+
+if (!process.env.OCR_SPACE_API_KEY) {
+  throw new Error("OCR_SPACE_API_KEY is not defined in the environment variables.");
+}
+
 const aaiClient = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe";
 
@@ -52,7 +59,7 @@ Question type: GENERAL TECH CONCEPT
 • Use plain English: 2–3 sentence paragraph or 3 bullets.
 • Don’t reference personal projects or experience.
 `;
-
+const MAX_MERGED_LINES = 3000;
 
 
 let mainWindow = null;
@@ -65,6 +72,7 @@ let audioWin = null;
 let audioStream = null;
 let aai = null;
 let audioVisible = false;
+let mergedLines = [];
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -116,6 +124,45 @@ function createWindow() {
   registerShortcuts();
 }
 
+async function extractText(fp) {
+  const res = await ocrSpace(
+    fp,                              // ① image path
+    {
+      apiKey: process.env.OCR_SPACE_API_KEY,
+      OCREngine: "2",
+      language: "eng",
+      isOverlayRequired: false,
+      scale: true,
+      filetype: "PNG",
+    }
+  );
+
+  return (res?.ParsedResults || [])
+    .map(r => r.ParsedText || "")
+    .join("\n");
+}
+
+
+function mergeSliceText(sliceText) {
+  sliceText
+    .split(/\r?\n/)
+    .map(l => l.trimEnd())          // normalise line endings
+    .forEach(line => {
+      if (!line) return;            // skip blanks
+
+      const last = mergedLines[mergedLines.length - 1];
+      if (line === last) return;    // consecutive duplicate → skip
+
+      mergedLines.push(line);
+
+      // Hard ceiling so we never blow past 100 k tokens
+      if (mergedLines.length > MAX_MERGED_LINES) {
+        const excess = mergedLines.length - MAX_MERGED_LINES;
+        mergedLines.splice(0, excess);
+      }
+    });
+}
+
 function registerShortcuts() {
   globalShortcut.register("F2", () => {
     if (!mainWindow) return;
@@ -133,6 +180,8 @@ function registerShortcuts() {
   globalShortcut.register("F4", () => {
     screenshots = [];
     conversationHistory = [];
+    audioHistory = [];
+    mergedLines = [];
     mainWindow?.webContents.send("cleared");
   });
 
@@ -150,11 +199,15 @@ function registerShortcuts() {
     mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
     setTimeout(async () => {
+      let img;
       try {
-        const img = await screenshot();
-        const filePath = path.join(os.tmpdir(), `ss-${Date.now()}.jpg`);
+        img = await screenshot();
+
+        const filePath = path.join(os.tmpdir(), `ss-${Date.now()}.png`);
         fs.writeFileSync(filePath, img);
-        screenshots.push(filePath);
+        const txt = await extractText(filePath);
+        mergeSliceText(txt);
+        console.log("[OCR] extracted text:", mergedLines);
         mainWindow?.webContents.send("screenshot", pathToFileURL(filePath).href);
       } catch (e) {
         console.error("Screenshot failed:", e);
@@ -168,8 +221,13 @@ function registerShortcuts() {
   });
 
   globalShortcut.register("Control+Enter", () => {
-    mainWindow?.webContents.send("send-to-api", screenshots);
+    const ocrPayload = mergedLines.join("\n").trim();
+    mainWindow?.webContents.send("send-to-api", {
+      screenshots: [],          // we’re text-first now
+      ocr: ocrPayload       // ship OCR to renderer
+    });
     screenshots = [];
+    mergedLines = [];               // reset for next round
   });
 
   globalShortcut.register("F5", async () => {
@@ -247,32 +305,15 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
 });
 
-
-ipcMain.on("send-to-api", async (event, { message, screenshots }) => {
+ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = ""}) => {
   try {
     // 0) pre-flight – tell renderer a stream is starting
     event.sender.send("assistant-stream-start");
 
-    /* 1) upload screenshots exactly as before … */
-    const uploaded = await Promise.all(
-      screenshots.slice(0, 3).map(async fp => {
-        const { id } = await openai.files.create({
-          file: fs.createReadStream(fp),
-          purpose: "assistants",
-        });
-        return id;
-      })
-    );
-
+    const plainText = [message, ocr].filter(Boolean).join("\n\n```txt\n") + (ocr ? "\n```" : "");
     const userMsg = {
       role: "user",
-      content: [
-        { type: "text", text: message || "..." },
-        ...uploaded.map(id => ({
-          type: "image_file",
-          image_file: { file_id: id },
-        })),
-      ],
+      content: [{ type: "text", text: plainText || "..." }],
     };
 
     console.log("[assistant] user message:", userMsg);

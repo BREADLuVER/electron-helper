@@ -13,8 +13,11 @@
     "dotenv": "^16.5.0",
     "electron": "^29.1.4",
     "marked": "^15.0.8",
+    "ocr-space-api-wrapper": "^2.3.2",
+    "open": "^10.1.2",
     "openai": "^4.95.1",
     "screenshot-desktop": "^1.15.1",
+    "sharp": "^0.34.1",
     "vite": "^6.2.5",
     "vite-plugin-electron": "^0.28.4"
   },

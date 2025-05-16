@@ -141,11 +141,12 @@
         message = e.target.value;
       });
 
-      ipcRenderer.on("send-to-api", (mainShots) => {
+      ipcRenderer.on("send-to-api", ({mainShots, ocr}) => {
         screenshots = mainShots;
         ipcRenderer.send("send-to-api", {
           message,
-          screenshots
+          screenshots,
+          ocr
         });
         inputField.value = "";
         message = "";
