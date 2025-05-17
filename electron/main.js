@@ -59,8 +59,6 @@ Question type: GENERAL TECH CONCEPT
 • Use plain English: 2–3 sentence paragraph or 3 bullets.
 • Don’t reference personal projects or experience.
 `;
-const MAX_MERGED_LINES = 3000;
-
 
 let mainWindow = null;
 let isVisible = true;
@@ -176,7 +174,7 @@ function registerShortcuts() {
     screenshots = [];
     conversationHistory = [];
     audioHistory = [];
-    mergedLines = [];
+    merged = [];
     mainWindow?.webContents.send("cleared");
   });
 

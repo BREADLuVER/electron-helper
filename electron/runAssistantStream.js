@@ -48,9 +48,8 @@ export async function runAssistantStream(
       If asked about follow-ups or provided error messages intended for debugging
       1. First, figure out what the error message means and what could cause it.
       2. Point out the specific part of the code that’s likely broken.
-      3. Suggest practical fixes and explain why they would work.
-      4. Use real-world reasoning: console logs, variable checks, common mistakes.
-      5. You need to mark the code changes in the code, and explain what you are doing.`
+      3. Use real-world reasoning before providing full fixed code: console logs, variable checks, common mistakes (please provide where to look or add).
+      4. Provide fixed code. You need to mark the code changes in the code, and explain what you are doing.`
       , stream: true }
   );
 
