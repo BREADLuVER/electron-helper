@@ -72,7 +72,6 @@ let audioWin = null;
 let audioStream = null;
 let aai = null;
 let audioVisible = false;
-let mergedLines = [];
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -126,7 +125,7 @@ function createWindow() {
 
 async function extractText(fp) {
   const res = await ocrSpace(
-    fp,                              // ① image path
+    fp,
     {
       apiKey: process.env.OCR_SPACE_API_KEY,
       OCREngine: "2",
@@ -143,24 +142,20 @@ async function extractText(fp) {
 }
 
 
+const WINDOW = 120;
+let   buffer = [];
+let   merged = [];
+
 function mergeSliceText(sliceText) {
-  sliceText
-    .split(/\r?\n/)
-    .map(l => l.trimEnd())          // normalise line endings
-    .forEach(line => {
-      if (!line) return;            // skip blanks
+  sliceText.split(/\r?\n/).forEach(raw => {
+    const line = raw.trimEnd();
+    if (buffer.includes(line))  return;
 
-      const last = mergedLines[mergedLines.length - 1];
-      if (line === last) return;    // consecutive duplicate → skip
-
-      mergedLines.push(line);
-
-      // Hard ceiling so we never blow past 100 k tokens
-      if (mergedLines.length > MAX_MERGED_LINES) {
-        const excess = mergedLines.length - MAX_MERGED_LINES;
-        mergedLines.splice(0, excess);
-      }
-    });
+    merged.push(line);
+    buffer.push(line);
+    if (buffer.length > WINDOW) buffer.shift();
+    if (merged.length > 3000)    merged.shift();
+  });
 }
 
 function registerShortcuts() {
@@ -185,10 +180,10 @@ function registerShortcuts() {
     mainWindow?.webContents.send("cleared");
   });
 
-  globalShortcut.register("Control+Up", () => moveWindow(0, -10));
-  globalShortcut.register("Control+Down", () => moveWindow(0, 10));
-  globalShortcut.register("Control+Left", () => moveWindow(-10, 0));
-  globalShortcut.register("Control+Right", () => moveWindow(10, 0));
+  globalShortcut.register("Control+Up", () => moveWindow(0, -30));
+  globalShortcut.register("Control+Down", () => moveWindow(0, 30));
+  globalShortcut.register("Control+Left", () => moveWindow(-30, 0));
+  globalShortcut.register("Control+Right", () => moveWindow(30, 0));
 
   globalShortcut.register("Control+G", async () => {
     if (!mainWindow) return;
@@ -207,7 +202,6 @@ function registerShortcuts() {
         fs.writeFileSync(filePath, img);
         const txt = await extractText(filePath);
         mergeSliceText(txt);
-        console.log("[OCR] extracted text:", mergedLines);
         mainWindow?.webContents.send("screenshot", pathToFileURL(filePath).href);
       } catch (e) {
         console.error("Screenshot failed:", e);
@@ -221,13 +215,13 @@ function registerShortcuts() {
   });
 
   globalShortcut.register("Control+Enter", () => {
-    const ocrPayload = mergedLines.join("\n").trim();
+    const ocrPayload = merged.join("\n").trim();
     mainWindow?.webContents.send("send-to-api", {
-      screenshots: [],          // we’re text-first now
-      ocr: ocrPayload       // ship OCR to renderer
+      screenshots: [],
+      ocr: ocrPayload
     });
-    screenshots = [];
-    mergedLines = [];               // reset for next round
+    merged = [];
+    buffer = [];
   });
 
   globalShortcut.register("F5", async () => {
@@ -307,7 +301,6 @@ app.on("will-quit", () => {
 
 ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = ""}) => {
   try {
-    // 0) pre-flight – tell renderer a stream is starting
     event.sender.send("assistant-stream-start");
 
     const plainText = [message, ocr].filter(Boolean).join("\n\n```txt\n") + (ocr ? "\n```" : "");
@@ -325,7 +318,7 @@ ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = ""}) => {
       FRONTEND_ASSISTANT_ID,
       userMsg,
       (token) => {
-        event.sender.send("assistant-stream-data", token); // drip to UI
+        event.sender.send("assistant-stream-data", token);
         finalText += token;
       }
     );
