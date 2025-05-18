@@ -74,8 +74,8 @@ let audioVisible = false;
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  const winWidth = 500;
-  const winHeight = 600;
+  const winWidth = 400;
+  const winHeight = 400;
   const x = Math.floor((width - winWidth) / 2);
   const y = Math.floor((height - winHeight) / 2);
 
