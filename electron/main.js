@@ -11,10 +11,10 @@ import os from "os";
 import { pathToFileURL } from "url";
 import { runAssistantStream } from "./runAssistantStream.js"; // ⬅ helper above
 import { OpenAI } from "openai";
+import { fileURLToPath } from "url";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // still used for images
 const BEHAVIORAL_ASSISTANT_ID = process.env.BEHAVIORAL_ASSISTANT_ID;
 const FRONTEND_ASSISTANT_ID = process.env.FRONTEND_ASSISTANT_ID;
-import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -183,6 +183,20 @@ function registerShortcuts() {
   globalShortcut.register("Control+Left", () => moveWindow(-30, 0));
   globalShortcut.register("Control+Right", () => moveWindow(30, 0));
 
+  let isClickThrough = true
+
+  globalShortcut.register("Insert", () => {
+    if (!mainWindow) return;
+    isClickThrough = !isClickThrough;
+    mainWindow.setIgnoreMouseEvents(isClickThrough, { forward: true });
+
+    if (audioWin) {
+      audioWin.setIgnoreMouseEvents(isClickThrough, { forward: true });
+    }
+
+    console.log("Click-through mode:", isClickThrough ? "ON" : "OFF");
+  });
+
   globalShortcut.register("Control+G", async () => {
     if (!mainWindow) return;
 
@@ -252,13 +266,13 @@ function registerShortcuts() {
           contextIsolation: true,
         },
       });
-  
+
       audioWin.loadFile(path.join(__dirname, "../audio.html"));
     }
 
     audioVisible = !audioVisible;
     audioWin.setOpacity(audioVisible ? 1 : 0);
-    audioWin.setIgnoreMouseEvents(!audioVisible, { forward: true });
+    audioWin.setIgnoreMouseEvents(true, { forward: true });
 
     if (audioVisible) {
       startAudioPipeline(audioWin);
@@ -295,6 +309,11 @@ app.on("activate", () => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
+});
+
+ipcMain.on("toggle-ignore-mouse", (evt, shouldIgnore) => {
+  const win = BrowserWindow.fromWebContents(evt.sender);
+  win.setIgnoreMouseEvents(shouldIgnore, { forward: true });
 });
 
 ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = ""}) => {

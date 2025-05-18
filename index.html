@@ -7,7 +7,7 @@
       body {
         margin: 0;
         padding: 1rem;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.2);
         color: white;
         font-family: sans-serif;
       }
@@ -40,7 +40,7 @@
       .reply {
         margin-top: 1rem;
         padding: 0.5rem;
-        background: rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.2);
         background: transparent;
         border-radius: 8px;
       }
@@ -57,16 +57,17 @@
       }
     
       pre code {
-        background: rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.2); 
         color: #eee;
         font-family: 'Courier New', monospace;
-        font-size: 11px;
+        font-size: 12px;
         padding: 0.5rem;
         border-radius: 5px;
         display: block;
         overflow-x: auto;
         margin-top: 0.25rem;
-        line-height: 1.4;
+        line-height: 1.5;
+        white-space: pre-wrap;
       }
     
       code {
@@ -74,11 +75,19 @@
         background: rgba(255, 255, 255, 0.1);
         padding: 0 4px;
         border-radius: 3px;
+        background: transparent;
       }
     </style>    
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <!-- <style id="transparent-code-bg">
+      pre code.hljs,
+      code.hljs,
+      .hljs {
+        background: transparent !important;
+      }
+    </style> -->
     <script>
       marked.setOptions({
         gfm: true,                   // fenced blocks, tables, strike‑through…
@@ -101,6 +110,8 @@
     <script>
       const screenshotsEl = document.getElementById('screenshots');
       const inputBar = document.getElementById('input-bar');
+      inputBar.addEventListener("mouseenter", () => window.mouseToggler.setIgnore(false));
+      inputBar.addEventListener("mouseleave", () => window.mouseToggler.setIgnore(true));
       const inputField = document.getElementById('user-message');
       const responseEl = document.getElementById('response');
 
