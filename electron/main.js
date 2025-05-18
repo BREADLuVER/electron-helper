@@ -74,8 +74,8 @@ let audioVisible = false;
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  const winWidth = 400;
-  const winHeight = 400;
+  const winWidth = 450;
+  const winHeight = 500;
   const x = Math.floor((width - winWidth) / 2);
   const y = Math.floor((height - winHeight) / 2);
 
@@ -183,7 +183,7 @@ function registerShortcuts() {
   globalShortcut.register("Control+Left", () => moveWindow(-30, 0));
   globalShortcut.register("Control+Right", () => moveWindow(30, 0));
 
-  let isClickThrough = true
+  let isClickThrough = false
 
   globalShortcut.register("Insert", () => {
     if (!mainWindow) return;
@@ -272,7 +272,7 @@ function registerShortcuts() {
 
     audioVisible = !audioVisible;
     audioWin.setOpacity(audioVisible ? 1 : 0);
-    audioWin.setIgnoreMouseEvents(true, { forward: true });
+    audioWin.setIgnoreMouseEvents(!audioVisible, { forward: true });
 
     if (audioVisible) {
       startAudioPipeline(audioWin);
@@ -309,11 +309,6 @@ app.on("activate", () => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
-});
-
-ipcMain.on("toggle-ignore-mouse", (evt, shouldIgnore) => {
-  const win = BrowserWindow.fromWebContents(evt.sender);
-  win.setIgnoreMouseEvents(shouldIgnore, { forward: true });
 });
 
 ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = ""}) => {

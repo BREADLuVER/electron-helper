@@ -38,7 +38,3 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
     }
   },
 });
-
-contextBridge.exposeInMainWorld("mouseToggler", {
-  setIgnore: (v) => ipcRenderer.send("toggle-ignore-mouse", v),
-});

@@ -1,6 +1,6 @@
 import "electron";
 import "path";
-import { s, a } from "./main-ojzlMXTF.js";
+import { s, a } from "./main-DOFASpmO.js";
 import "child_process";
 import "fs";
 import "os";
