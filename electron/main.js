@@ -74,8 +74,8 @@ let audioVisible = false;
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  const winWidth = 450;
-  const winHeight = 500;
+  const winWidth = 500;
+  const winHeight = 600;
   const x = Math.floor((width - winWidth) / 2);
   const y = Math.floor((height - winHeight) / 2);
 
@@ -122,18 +122,21 @@ function createWindow() {
 }
 
 async function extractText(fp) {
+  console.log("Extracting text from image:", fp);
   const res = await ocrSpace(
     fp,
     {
       apiKey: process.env.OCR_SPACE_API_KEY,
-      OCREngine: "2",
+      OCREngine: "1",
       language: "eng",
       isOverlayRequired: false,
       scale: true,
       filetype: "PNG",
+      url: "https://apipro1.ocr.space/parse/image"
     }
   );
 
+  console.log("OCR result:", res);
   return (res?.ParsedResults || [])
     .map(r => r.ParsedText || "")
     .join("\n");

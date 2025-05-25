@@ -7,13 +7,13 @@
       body {
         margin: 0;
         padding: 1rem;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.2);
         color: white;
         font-family: sans-serif;
       }
     
       #screenshots img {
-        width: 200px;
+        width: 100px;
         margin: 5px;
         border: 2px solid white;
       }
@@ -40,7 +40,8 @@
       .reply {
         margin-top: 1rem;
         padding: 0.5rem;
-        background: rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.2);
+        background: transparent;
         border-radius: 8px;
       }
 
@@ -56,28 +57,37 @@
       }
     
       pre code {
-        background: rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.2); 
         color: #eee;
         font-family: 'Courier New', monospace;
-        font-size: 11px;
+        font-size: 10px;
         padding: 0.5rem;
         border-radius: 5px;
         display: block;
         overflow-x: auto;
         margin-top: 0.25rem;
-        line-height: 1.4;
+        line-height: 1.5;
+        white-space: pre-wrap;
       }
     
       code {
-        font-size: 10px;
-        background: rgba(255, 255, 255, 0.1);
+        font-size: 9px;
+        background: rgba(255, 255, 255, 0.2);
         padding: 0 4px;
         border-radius: 3px;
+        background: transparent;
       }
     </style>    
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <!-- <style id="transparent-code-bg">
+      pre code.hljs,
+      code.hljs,
+      .hljs {
+        background: transparent !important;
+      }
+    </style> -->
     <script>
       marked.setOptions({
         gfm: true,                   // fenced blocks, tables, strike‑through…
@@ -141,11 +151,12 @@
         message = e.target.value;
       });
 
-      ipcRenderer.on("send-to-api", (mainShots) => {
+      ipcRenderer.on("send-to-api", ({mainShots, ocr}) => {
         screenshots = mainShots;
         ipcRenderer.send("send-to-api", {
           message,
-          screenshots
+          screenshots,
+          ocr
         });
         inputField.value = "";
         message = "";
