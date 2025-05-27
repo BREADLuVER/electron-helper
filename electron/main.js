@@ -17,6 +17,9 @@ const BEHAVIORAL_ASSISTANT_ID = process.env.BEHAVIORAL_ASSISTANT_ID;
 const FRONTEND_ASSISTANT_ID = process.env.FRONTEND_ASSISTANT_ID;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+import fetch from "node-fetch";
+import { FormData } from 'formdata-node';
+import { fileFromPath } from 'formdata-node/file-from-path';
 
 if (!process.env.OPENAI_API_KEY) {
   throw new Error("OPENAI_API_KEY is not defined in the environment variables.");
@@ -53,6 +56,8 @@ let audioWin = null;
 let audioStream = null;
 let aai = null;
 let audioVisible = false;
+let   recorder       = null;
+let   currentOutput  = null;
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -156,7 +161,7 @@ function registerShortcuts() {
     }
   });
 
-  globalShortcut.register("F4", () => {
+  globalShortcut.register("F10", () => {
     screenshots = [];
     conversationHistory = [];
     audioHistory = [];
@@ -246,13 +251,14 @@ function registerShortcuts() {
         skipTaskbar: true,
         resizable: false,
         hasShadow: false,
+        focusable: false,
         webPreferences: {
           preload: path.join(__dirname, "preload.js"),
           nodeIntegration: false,
           contextIsolation: true,
         },
       });
-
+      audioWin.setContentProtection(true);
       audioWin.loadFile(path.join(__dirname, "../audio.html"));
     }
 
@@ -483,5 +489,100 @@ ipcMain.on("audio-clear", () => {
   audioHistory = [];
   return;
 });
+
+ipcMain.handle("recorder:toggle", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (recorder) stopRecorder(win);
+  else          startRecorder(win);
+});
+
+function startRecorder(win) {
+  if (recorder) return;                         // already running
+  console.log("[recorder] starting…");
+  // fresh temp dir and single output file
+  const tmpDir = path.join(os.tmpdir(), "gptrec");
+  fs.mkdirSync(tmpDir, { recursive: true });
+  currentOutput = path.join(tmpDir, "session.wav");
+
+  // try dual-device first
+  const dualArgs = [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "dshow", "-i", "audio=Stereo Mix (Realtek(R) Audio)",
+    "-f", "dshow", "-i", "audio=Microphone (NVIDIA Broadcast)",
+    "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2",
+    "-ac", "1",
+    "-ar", "16000",
+    "-sample_fmt", "s16",
+    "-c:a", "pcm_s16le",      // ← add this
+    "-f", "wav",
+    "-y", currentOutput
+  ];
+
+  recorder = spawn(ffmpegPath, dualArgs, { windowsHide: true });
+  recorder.stderr.on("data", (b) => console.error("[ffmpeg]", b.toString()));
+
+  // if FFmpeg exits immediately (bad device), retry with Stereo Mix only
+  recorder.once("exit", (code) => {
+    if (code === 1) {
+      console.warn("Dual-device failed → retrying single device");
+      startSingleDevice(win);
+      return;
+    }
+  });
+
+  win.webContents.send("recorder:status", true);  // LIVE badge on
+}
+
+function startSingleDevice(win) {
+  currentOutput = currentOutput || path.join(os.tmpdir(), "gptrec", "session.wav");
+  recorder = spawn(ffmpegPath, [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "dshow", "-i", "audio=Stereo Mix (Realtek(R) Audio)",
+    "-ac", "1", "-ar", "16000", "-sample_fmt", "s16",
+    "-c:a", "pcm_s16le",
+    "-f", "wav",
+    "-y", currentOutput
+  ], { windowsHide: true });
+
+  recorder.stderr.on("data", (b) => console.error("[ffmpeg]", b.toString()));
+}
+
+function stopRecorder(win) {
+  if (!recorder) return;
+
+  // when FFmpeg finishes closing the file, transcribe it
+  recorder.once("close", async () => {
+    try {
+      const text = await transcribe(currentOutput);
+      win.webContents.send("recorder:data", text.trim());
+    } catch (err) {
+      console.error("Whisper error", err);
+      win.webContents.send("recorder:error", err.message);
+    } finally {
+      try { fs.unlinkSync(currentOutput); } catch {}
+      currentOutput = null;
+      win.webContents.send("recorder:status", false);  // badge off
+    }
+  });
+
+  recorder.kill("SIGINT");
+  recorder = null;
+}
+
+async function transcribe(filePath) {
+  const form = new FormData();
+  form.append("file", await fileFromPath(filePath));
+  form.append("model", "whisper-1");      // avoids “format not supported” error
+  form.append("language", "en");
+
+  const res  = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: form
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error?.message || res.statusText);
+  return json.text || "";
+}
 
 export { startAudioPipeline, stopAudioPipeline };

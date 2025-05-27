@@ -50,6 +50,11 @@
       margin: 2px 0;
       white-space: pre-wrap;
     }
+    .entry + .entry {
+      border-top: 1px solid #555;  /* looks like an <hr>, but easier to style   */
+      padding-top: 4px;            /* breathing room above the new reply        */
+      margin-top: 6px;             /* keeps spacing consistent                  */
+    }
     .assistant-entry {
       color: #aed581;
     }
@@ -181,10 +186,14 @@
       }
     });
   
-    clearPartialBtn.addEventListener("click", () => {
-      lastPartial = "";
-      renderLive();
-    });
+  clearPartialBtn.addEventListener("click", () => {
+    currentText   = "";
+    lastPartial   = "";
+    flushUntilFinal = false;        // make sure we resume taking partials
+    renderLive();
+
+    ipc.send("audio-clear-live");
+  });
   </script>
 </body>
 </html>

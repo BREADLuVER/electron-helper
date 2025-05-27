@@ -14,6 +14,7 @@ const VALID_CHANNELS = [
   "assistant-reply",
   "audio-submit",
   "audio-clear",
+  "recorder:data", "recorder:status", "recorder:error",
 ];
 
 contextBridge.exposeInMainWorld("ipcRenderer", {
@@ -38,3 +39,17 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
     }
   },
 });
+
+contextBridge.exposeInMainWorld("recorder", {
+  toggle: () => ipcRenderer.invoke("recorder:toggle"),
+});
+
+ipcRenderer.on("recorder:data", (_e, text) =>
+  window.dispatchEvent(new CustomEvent("recorder-data", { detail: text }))
+);
+ipcRenderer.on("recorder:status", (_e, isLive) =>
+  window.dispatchEvent(new CustomEvent("recorder-status", { detail: isLive }))
+);
+ipcRenderer.on("recorder:error", (_e, msg) =>
+  window.dispatchEvent(new CustomEvent("recorder-error", { detail: msg }))
+);

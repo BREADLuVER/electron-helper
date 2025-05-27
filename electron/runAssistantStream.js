@@ -90,6 +90,9 @@ export async function runAssistantStream(
   `;
   // 3) start run **with streaming enabled**
   const runArgs = { assistant_id: assistantId, stream: true };
+  const recBtn    = document.getElementById("toggle-rec");
+
+  recBtn.addEventListener("click", () => window.recorder.toggle());
 
   if (assistantId === process.env.FRONTEND_ASSISTANT_ID) {
     runArgs.instructions = BIG_PAIR_PROGRAMMING_PROMPT;

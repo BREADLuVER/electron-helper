@@ -6,7 +6,7 @@
     <style>
       body {
         margin: 0;
-        padding: 1rem;
+        padding: 4rem;
         background: rgba(0, 0, 0, 0.7);
         color: white;
         font-family: sans-serif;
@@ -19,7 +19,15 @@
       }
     
       #input-bar {
-        margin-top: 1rem;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        margin: 0;
+        padding: 1rem;
+        background: rgba(0,0,0,0.85);
+        z-index: 100;
+        box-sizing: border-box;
       }
     
       #input-bar input {
@@ -77,6 +85,17 @@
         border-radius: 3px;
         background: transparent;
       }
+
+      #live-badge {
+        position: fixed;
+        bottom: 12px; right: 12px;
+        background: #e53935; color: #fff;
+        padding: 4px 10px; border-radius: 9999px;
+        font-size: 12px; font-weight: 600;
+        box-shadow: 0 0 4px rgba(0,0,0,.3);
+        z-index: 1000;
+      }
+      
     </style>    
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
@@ -99,7 +118,6 @@
     </script>
   </head>
   <body>
-    <h2>Captured Screenshots</h2>
     <div id="screenshots"></div>
 
     <div id="response"></div>
@@ -107,12 +125,38 @@
     <div id="input-bar">
       <input id="user-message" type="text" placeholder="Type your message..." />
     </div>
+    <div id="live-badge" hidden>LIVE</div>
     <script>
       const screenshotsEl = document.getElementById('screenshots');
       const inputBar = document.getElementById('input-bar');
       const inputField = document.getElementById('user-message');
       const responseEl = document.getElementById('response');
+      const liveBadge = document.getElementById("live-badge");
+      const userArea  = document.getElementById("user-message");
 
+      window.addEventListener("keydown", (e) => {
+        if (e.ctrlKey && e.key === ".") {
+          e.preventDefault();
+          window.recorder.toggle();
+        }
+      });
+
+      window.addEventListener("recorder-status", ({ detail: isLive }) => {
+        liveBadge.hidden = !isLive;
+        console.log('Recorder status:', isLive ? 'LIVE' : 'OFF');
+      });
+
+      window.addEventListener("recorder-data", ({ detail }) => {
+        if (!detail) return;
+        userArea.value += (userArea.value ? " " : "") + detail;
+        userArea.scrollTop = userArea.scrollHeight;
+        console.log("Recorder data:", detail);
+      });
+
+      window.addEventListener("recorder-error", ({ detail }) => {
+        console.error("Recorder error:", detail);
+        // optional toast()
+      });
       let message = "";
       let screenshots = [];
 
