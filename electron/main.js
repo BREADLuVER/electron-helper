@@ -35,29 +35,12 @@ const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg
 
 const TONE_CUE_HEADER = `When providing a answer, follow the tone and voice shown in these examples: natural, messy, in‑the‑moment.`;
 const EXAMPLES = [
-  "Yeah, so when I joined, the QA team was still using this old internal tool that basically just dumped raw logs. If you wanted to figure out what went wrong — like some color flickering or a sync issue — you had to open these massive text files and scan through timestamps.It worked, but it was super manual and didn’t scale well, especially with newer GPU features like HDR or variable refresh. That’s where the idea for the Display Insights Portal came in — we wanted to build a web tool that could actually show real-time telemetry, so engineers could catch problems as they happened, instead of digging through logs afterward.",
+  "Yeah the reason we developed this new product is that when I joined, the QA team was still using this old internal tool that basically just dumped raw logs. If you wanted to figure out what went wrong — like some color flickering or a sync issue — you had to open these massive text files and scan through timestamps.It worked, but it was super manual and didn’t scale well, especially with newer GPU features like HDR or variable refresh. That’s where the idea for the Display Insights Portal came in — we wanted to build a web tool that could actually show real-time telemetry, so engineers could catch problems as they happened, instead of digging through logs afterward.",
+  "So at AMD I was on a lean team — like six of us total — and I handled the front end for our GPU telemetry dashboard. But because we were small, I also had to sync a lot with backend and QA. There was one stretch where we were getting bug reports from QA, new schema changes from firmware, and on top of that, the display team wanted to demo a new data stream for HDR validation. So the way I handled it was pretty simple — I started joining their triage meetings twice a week. Just listening in helped me catch blockers early. I also set up a shared Notion page to track which endpoints were stable and which ones were still changing, so front end wouldn’t keep breaking. It wasn’t anything fancy, but keeping that cross-team thread helped me avoid surprises and prioritize the right features week to week.",
+  "This was during a release crunch — we were maybe five days out, and QA flagged that one of our GPU metrics was randomly vanishing from the UI. Totally intermittent. Some testers saw it, some didn’t. First instinct was to blame the WebSocket stream, but logs weren’t consistent. So I paired with a backend dev and we replayed old packets with mock data to narrow it down. Turned out one of our front-end filters had a typo that dropped the metric if its value was null, which was valid in some scenarios. Quick fix — but super subtle. After that, I wrote a small test harness to load every metric with dummy values, just to catch stuff like that early. Wasn’t glamorous, but it saved us the next time someone pushed an edge case.",
 ];
 const RUN_INSTRUCTION = `
-Answer like you're thinking out loud in an interview — not writing an article.
-Sound like you’re talking to a non-fluent English speaker peer, avoid formal verbs (“ensured”, “strive”, “emphasized”).
-No summaries, no reflection, no polished wrap‑ups.
-Flow naturally. Light connectors
-Show your thoughts.
-Dodge jargon. Spell acronyms or swap for plain English.
-Question type: EXPERIENCE DETAIL
-• Skip intro. Dive right into what you did.
-• Talk through one or two specific things that worked.
-• Don’t summarize the impact unless asked.
 
-Question type: FOLLOW-UP
-• Continue mid-thought.
-• No intros, no conclusions — just give the detail.
-• Max 2 sentences.”
-
-Question type: GENERAL TECH CONCEPT
-• Keep it short and simple — like explaining to a junior dev.
-• Use plain English: 2–3 sentence paragraph or 3 bullets.
-• Don’t reference personal projects or experience.
 `;
 
 let mainWindow = null;
@@ -246,8 +229,8 @@ function registerShortcuts() {
       const mainBounds = mainWindow.getBounds();
       const margin = 10;
   
-      const audioWidth = 400;
-      const audioHeight = 500;
+      const audioWidth = 500;
+      const audioHeight = 600;
   
       const x = mainBounds.x + mainBounds.width + margin;
       const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
@@ -449,16 +432,16 @@ function stopAudioPipeline() {
 function wrapQuestion(raw) {
   const fewShot = EXAMPLES.slice(0, 3).join("\n\n");
   return `
-${TONE_CUE_HEADER}
+  ${TONE_CUE_HEADER}
 
----
-${fewShot}
----
+  ---
+  ${fewShot}
+  ---
 
-${RUN_INSTRUCTION.trim()}
+  ${RUN_INSTRUCTION.trim()}
 
-${raw.trim()}
-`.trim();
+  ${raw.trim()}
+  `.trim();
 }
 
 let audioBusy = false;
