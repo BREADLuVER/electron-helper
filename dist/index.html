@@ -145,9 +145,9 @@
       const userArea  = document.getElementById("user-message");
       let baseText   = "";   // stable text that existed before recording
       let lastPartial = "";
-      
+
       window.addEventListener("keydown", (e) => {
-        if (e.ctrlKey && e.key === ".") {
+        if (e.code === "F9") {
           e.preventDefault();
           window.recorder.toggle();
         }
