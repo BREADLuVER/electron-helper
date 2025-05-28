@@ -45,6 +45,7 @@ const EXAMPLES = [
 const RUN_INSTRUCTION = `
 
 `;
+const sessionAttachmentIds = new Set();
 
 let mainWindow = null;
 let isVisible = true;
@@ -166,6 +167,7 @@ function registerShortcuts() {
     conversationHistory = [];
     audioHistory = [];
     merged = [];
+    sessionAttachmentIds.clear();
     mainWindow?.webContents.send("cleared");
   });
 
@@ -221,7 +223,7 @@ function registerShortcuts() {
     const ocrPayload = merged.join("\n").trim();
     mainWindow?.webContents.send("send-to-api", {
       screenshots: [],
-      ocr: ocrPayload
+      ocr: ocrPayload,
     });
     merged = [];
     buffer = [];
@@ -303,7 +305,7 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
 });
 
-ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = ""}) => {
+ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = "", uploadedFileIds }) => {
   try {
     event.sender.send("assistant-stream-start");
 
@@ -311,6 +313,10 @@ ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = ""}) => {
     const userMsg = {
       role: "user",
       content: [{ type: "text", text: plainText || "..." }],
+      attachments: [...sessionAttachmentIds].map(id => ({
+        file_id: id,
+        tools: [{ type: "file_search" }],
+      })),
     };
 
     console.log("[assistant] user message:", userMsg);
@@ -450,6 +456,47 @@ function wrapQuestion(raw) {
   `.trim();
 }
 
+ipcMain.on("upload-file", async (event, { path: filePath, name }) => {
+  try {
+    // 1. Upload file to OpenAI
+    const form = new FormData();
+    form.append("file", await fileFromPath(filePath), name);
+    form.append("purpose", "assistants"); // required for Assistants API
+
+    const res = await fetch("https://api.openai.com/v1/files", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: form,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || res.statusText);
+
+    // 2. Notify renderer of success and file id
+    sessionAttachmentIds.add(json.id);
+    console.log("[file-upload] success:", json);
+    event.sender.send("file-uploaded", { id: json.id, name: json.filename });
+  } catch (err) {
+    event.sender.send("file-upload-error", err.message);
+  }
+});
+
+// ---------- audio‑overlay pipeline ----------
+function waitForWav(filePath, minBytes = 8192, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+
+    (function poll() {
+      fs.stat(filePath, (err, stats) => {
+        if (!err && stats.size >= minBytes) return resolve();
+        if (Date.now() - start > timeoutMs) {
+          return reject(new Error("No audio captured (file too small)."));
+        }
+        setTimeout(poll, 200);
+      });
+    })();
+  });
+}
+
 let audioBusy = false;
 
 ipcMain.on("audio-submit", async (_evt, question) => {
@@ -497,7 +544,7 @@ ipcMain.handle("recorder:toggle", (event) => {
 });
 
 function startRecorder(win) {
-  if (recorder) return;                         // already running
+  if (recorder || currentOutput) return; 
   console.log("[recorder] starting…");
   // fresh temp dir and single output file
   const tmpDir = path.join(os.tmpdir(), "gptrec");
@@ -553,15 +600,18 @@ function stopRecorder(win) {
   // when FFmpeg finishes closing the file, transcribe it
   recorder.once("close", async () => {
     try {
+      // make sure the file is really there and > 8 kB
+      await waitForWav(currentOutput);
+
       const text = await transcribe(currentOutput);
-      win.webContents.send("recorder:data", text.trim());
+      win.webContents.send("recorder:data", text.trim() || "[blank]");
     } catch (err) {
       console.error("Whisper error", err);
       win.webContents.send("recorder:error", err.message);
     } finally {
       try { fs.unlinkSync(currentOutput); } catch {}
       currentOutput = null;
-      win.webContents.send("recorder:status", false);  // badge off
+      win.webContents.send("recorder:status", false);   // badge off
     }
   });
 

@@ -13,7 +13,7 @@
       }
     
       #screenshots img {
-        width: 100px;
+        width: 50px;
         margin: 5px;
         border: 2px solid white;
       }
@@ -43,6 +43,16 @@
         margin-top: 1rem;
         font-size: 12px;
         line-height: 1.3;
+        /* Make response container take up most of the screen */
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 90vh;
+        overflow-y: auto;
+        padding: 1rem 2rem 6rem 2rem;
+        box-sizing: border-box;
+        z-index: 10;
       }
     
       .reply {
@@ -79,7 +89,7 @@
       }
     
       code {
-        font-size: 9px;
+        font-size: 11px;
         background: rgba(255, 255, 255, 0.7);
         padding: 0 4px;
         border-radius: 3px;
@@ -160,6 +170,16 @@
       let message = "";
       let screenshots = [];
 
+      document.addEventListener("dragover", (e) => e.preventDefault());
+      document.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (e.dataTransfer.files.length > 0) {
+          const file = e.dataTransfer.files[0];
+          // Send file path to main process
+          window.ipcRenderer.send("upload-file", { path: file.path, name: file.name });
+        }
+      });
+
       ipcRenderer.on("screenshot", (filePath) => {
         const wrapper = document.createElement("div");
         wrapper.style.position = "relative";
@@ -197,11 +217,7 @@
 
       ipcRenderer.on("send-to-api", ({mainShots, ocr}) => {
         screenshots = mainShots;
-        ipcRenderer.send("send-to-api", {
-          message,
-          screenshots,
-          ocr
-        });
+        ipcRenderer.send("send-to-api", { message, screenshots, ocr });
         inputField.value = "";
         message = "";
         screenshots = [];
@@ -257,6 +273,16 @@
         inputField.value = "";
         inputField.focus();
         message = "";
+      });
+
+      let uploadedFileIds = [];
+
+      ipcRenderer.on("file-uploaded", (_e, { id, name }) => {
+        uploadedFileIds.push(id);
+        alert(`File "${name}" uploaded! File ID: ${id}`);
+      });
+      ipcRenderer.on("file-upload-error", (_e, msg) => {
+        alert("File upload failed: " + msg);
       });
     </script>
   </body>

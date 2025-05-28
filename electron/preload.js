@@ -15,6 +15,9 @@ const VALID_CHANNELS = [
   "audio-submit",
   "audio-clear",
   "recorder:data", "recorder:status", "recorder:error",
+  "upload-file",
+  "file-uploaded",
+  "file-upload-error",
 ];
 
 contextBridge.exposeInMainWorld("ipcRenderer", {
