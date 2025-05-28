@@ -143,7 +143,9 @@
       const responseEl = document.getElementById('response');
       const liveBadge = document.getElementById("live-badge");
       const userArea  = document.getElementById("user-message");
-
+      let baseText   = "";   // stable text that existed before recording
+      let lastPartial = "";
+      
       window.addEventListener("keydown", (e) => {
         if (e.ctrlKey && e.key === ".") {
           e.preventDefault();
@@ -151,22 +153,36 @@
         }
       });
 
-      window.addEventListener("recorder-status", ({ detail: isLive }) => {
+      window.addEventListener("recorder:status", ({ detail: isLive }) => {
+        if (isLive) {
+          // capture whatever was in the box when recording started
+          baseText   = userArea.value;
+          lastPartial = "";
+        }
         liveBadge.hidden = !isLive;
-        console.log('Recorder status:', isLive ? 'LIVE' : 'OFF');
+        recBtn?.classList.toggle("active", isLive);  // if you have a button
+        console.log("Recorder status:", isLive ? "LIVE" : "OFF");
       });
 
-      window.addEventListener("recorder-data", ({ detail }) => {
-        if (!detail) return;
-        userArea.value += (userArea.value ? " " : "") + detail;
-        userArea.scrollTop = userArea.scrollHeight;
-        console.log("Recorder data:", detail);
+      window.addEventListener("recorder:partial", ({ detail: text }) => {
+        console.log("[partial]", text);
+        if (!text) return;
+
+        // replace previous partial with new one
+        userArea.value = baseText + text;
+        lastPartial    = text;
       });
 
-      window.addEventListener("recorder-error", ({ detail }) => {
-        console.error("Recorder error:", detail);
-        // optional toast()
+      window.addEventListener("recorder:final", ({ detail: text }) => {
+        console.log("[final]", text);
+        if (!text) return;
+
+        // cement the final, append a space, and reset partial state
+        baseText      += text + " ";
+        userArea.value = baseText;
+        lastPartial    = "";
       });
+
       let message = "";
       let screenshots = [];
 

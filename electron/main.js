@@ -33,6 +33,7 @@ if (!process.env.OCR_SPACE_API_KEY) {
   throw new Error("OCR_SPACE_API_KEY is not defined in the environment variables.");
 }
 
+import WebSocket from "ws";
 const aaiClient = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe";
 
@@ -59,6 +60,8 @@ let aai = null;
 let audioVisible = false;
 let   recorder       = null;
 let   currentOutput  = null;
+let recProc   = null;
+let ws        = null;
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -537,102 +540,98 @@ ipcMain.on("audio-clear", () => {
   return;
 });
 
-ipcMain.handle("recorder:toggle", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (recorder) stopRecorder(win);
-  else          startRecorder(win);
+ipcMain.handle("recorder:toggle", (evt) => {
+  const win = BrowserWindow.fromWebContents(evt.sender);
+  ws ? stopStream(win) : startStream(win);
 });
+function startStream(win) {
+  if (ws) return;
 
-function startRecorder(win) {
-  if (recorder || currentOutput) return; 
-  console.log("[recorder] starting…");
-  // fresh temp dir and single output file
-  const tmpDir = path.join(os.tmpdir(), "gptrec");
-  fs.mkdirSync(tmpDir, { recursive: true });
-  currentOutput = path.join(tmpDir, "session.wav");
+  /* ---------- 1. open websocket ---------- */
+  ws = new WebSocket(
+    "wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000",
+    { headers: { authorization: process.env.ASSEMBLYAI_API_KEY } }
+  );
 
-  // try dual-device first
-  const dualArgs = [
-    "-hide_banner", "-loglevel", "error",
-    "-f", "dshow", "-i", "audio=Stereo Mix (Realtek(R) Audio)",
-    "-f", "dshow", "-i", "audio=Microphone (NVIDIA Broadcast)",
-    "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2",
-    "-ac", "1",
-    "-ar", "16000",
-    "-sample_fmt", "s16",
-    "-c:a", "pcm_s16le",      // ← add this
-    "-f", "wav",
-    "-y", currentOutput
-  ];
+  ws.on("open", () => {
+    win.webContents.send("recorder:status", true);    // badge ON
+    console.log("[recorder] websocket open");
 
-  recorder = spawn(ffmpegPath, dualArgs, { windowsHide: true });
-  recorder.stderr.on("data", (b) => console.error("[ffmpeg]", b.toString()));
+    /* ---------- 2. spawn FFmpeg ---------- */
+    recProc = spawn(ffmpegPath, [
+      "-hide_banner", "-loglevel", "error",
+      "-f", "dshow", "-i", "audio=Stereo Mix (Realtek(R) Audio)",
+      "-f", "dshow", "-i", "audio=Microphone (NVIDIA Broadcast)",
+      "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2",
+      "-ac", "1", "-ar", "16000", "-sample_fmt", "s16",
+      "-f", "s16le", "-"          // raw 16-bit PCM to stdout
+    ], { windowsHide: true });
 
-  // if FFmpeg exits immediately (bad device), retry with Stereo Mix only
-  recorder.once("exit", (code) => {
-    if (code === 1) {
-      console.warn("Dual-device failed → retrying single device");
-      startSingleDevice(win);
-      return;
+    recProc.stderr.on("data", (b) => console.error("[ffmpeg]", b.toString()));
+
+    /* ---------- 3. pipe audio → ws ---------- */
+    let chunk = Buffer.alloc(0);
+    recProc.stdout.on("data", (data) => {
+      chunk = Buffer.concat([chunk, data]);
+      while (chunk.length >= 3200) {          // 100 ms of audio @16k/16-bit/mono
+        if (ws && ws.readyState === 1) {
+          ws.send(chunk.slice(0, 3200));
+        }
+        chunk = chunk.slice(3200);
+      }
+    });
+  });
+
+  ws.on("message", (buf) => {
+    const data = JSON.parse(buf.toString());
+
+    switch (data.message_type) {
+      /* ---------- live keystroke-like feed ---------- */
+      case "PartialTranscript": {
+        const partial = data.text || "";
+        console.log("[WS partial]", partial);
+        mainWindow.webContents.send("recorder:partial", partial);
+        break;
+      }
+
+      /* ---------- committed utterance ---------- */
+      case "FinalTranscript": {
+        // prefer the punctuated version if AssemblyAI provides it
+        const final =
+          (data.punctuated && data.punctuated.transcript) ||
+          data.text ||
+          "";
+        console.log("[WS final]", final);
+        mainWindow.webContents.send("recorder:final", final);
+        break;
+      }
+
+      case "SessionBegins":
+        console.log("[AssemblyAI] session started");
+        break;
+
+      default:
+        // you can log other message types here if curious
+        break;
     }
   });
 
-  win.webContents.send("recorder:status", true);  // LIVE badge on
-}
 
-function startSingleDevice(win) {
-  currentOutput = currentOutput || path.join(os.tmpdir(), "gptrec", "session.wav");
-  recorder = spawn(ffmpegPath, [
-    "-hide_banner", "-loglevel", "error",
-    "-f", "dshow", "-i", "audio=Stereo Mix (Realtek(R) Audio)",
-    "-ac", "1", "-ar", "16000", "-sample_fmt", "s16",
-    "-c:a", "pcm_s16le",
-    "-f", "wav",
-    "-y", currentOutput
-  ], { windowsHide: true });
-
-  recorder.stderr.on("data", (b) => console.error("[ffmpeg]", b.toString()));
-}
-
-function stopRecorder(win) {
-  if (!recorder) return;
-
-  // when FFmpeg finishes closing the file, transcribe it
-  recorder.once("close", async () => {
-    try {
-      // make sure the file is really there and > 8 kB
-      await waitForWav(currentOutput);
-
-      const text = await transcribe(currentOutput);
-      win.webContents.send("recorder:data", text.trim() || "[blank]");
-    } catch (err) {
-      console.error("Whisper error", err);
-      win.webContents.send("recorder:error", err.message);
-    } finally {
-      try { fs.unlinkSync(currentOutput); } catch {}
-      currentOutput = null;
-      win.webContents.send("recorder:status", false);   // badge off
-    }
+  ws.on("close", () => stopStream(win));
+  ws.on("error", (err) => {
+    console.error("WS error", err);
+    stopStream(win);
+    win.webContents.send("recorder:error", err.message);
   });
-
-  recorder.kill("SIGINT");
-  recorder = null;
 }
 
-async function transcribe(filePath) {
-  const form = new FormData();
-  form.append("file", await fileFromPath(filePath));
-  form.append("model", "whisper-1");      // avoids “format not supported” error
-  form.append("language", "en");
+function stopStream(win) {
+  if (recProc) { recProc.kill("SIGINT"); recProc = null; }
+  if (ws)      { ws.close(); ws = null; }
 
-  const res  = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-    body: form
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message || res.statusText);
-  return json.text || "";
+  win.webContents.send("recorder:status", false);     // badge OFF
+  win.webContents.send("recorder:partial", "");       // clear trailing partial
+  console.log("[recorder] stopped");
 }
 
 export { startAudioPipeline, stopAudioPipeline };
