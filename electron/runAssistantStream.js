@@ -73,8 +73,7 @@ export async function runAssistantStream(
   - Use logs or checks if helpful before rewriting.
   - Then post the fixed patch with the usual commentary.
   
-  All code should be production-grade: use proper types, readable variable names, no broken styles, and follow project conventions.
-  
+  All code should be production-grade: use proper types, readable variable names, no broken styles, and follow project conventions, but keep things concise and focused. Skip extra styling, edge case handling, or abstractions unless they’re directly relevant to the task.
   Keep things conversational and helpful—like you’re coding with a friend.
   `;
   // 3) start run **with streaming enabled**
