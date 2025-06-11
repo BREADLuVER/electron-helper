@@ -84,6 +84,7 @@ const sessionAttachmentIds = new Set();
 
 let mainWindow = null;
 let isVisible = true;
+// Each item: { url: string, ocrText: string }
 let screenshots = [];
 let conversationHistory = [];
 let audioHistory = [];
@@ -241,8 +242,13 @@ function registerShortcuts() {
         const filePath = path.join(os.tmpdir(), `ss-${Date.now()}.png`);
         fs.writeFileSync(filePath, img);
         const txt = await extractText(filePath);
+        const fileUrl = pathToFileURL(filePath).href;
+
+        // store so we can later remove OCR lines if user deletes the screenshot
+        screenshots.push({ url: fileUrl, ocrText: txt });
+
         mergeSliceText(txt);
-        mainWindow?.webContents.send("screenshot", pathToFileURL(filePath).href);
+        mainWindow?.webContents.send("screenshot", fileUrl);
       } catch (e) {
         console.error("Screenshot failed:", e);
       } finally {
@@ -262,6 +268,7 @@ function registerShortcuts() {
     });
     merged = [];
     buffer = [];
+    screenshots = [];
   });
 
   globalShortcut.register("F5", async () => {
@@ -671,3 +678,22 @@ function stopStream(win) {
 }
 
 export { startAudioPipeline, stopAudioPipeline };
+
+// ────────────────────────────────────────────────────────────
+// Helpers to rebuild OCR text after a screenshot is removed
+function rebuildMerged() {
+  buffer = [];
+  merged = [];
+  screenshots.forEach((s) => mergeSliceText(s.ocrText));
+}
+
+// ────────────────────────────────────────────────────────────
+// IPC handlers – renderer can request removal of screenshots / files
+ipcMain.on("screenshot-remove", (_evt, url) => {
+  screenshots = screenshots.filter((s) => s.url !== url);
+  rebuildMerged();
+});
+
+ipcMain.on("file-remove", (_evt, fileId) => {
+  sessionAttachmentIds.delete(fileId);
+});

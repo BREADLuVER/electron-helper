@@ -12,12 +12,33 @@
         font-family: sans-serif;
       }
     
-      #screenshots img {
-        width: 50px;
-        margin: 5px;
-        border: 2px solid white;
+      #screenshots {
+        position: fixed;
+        bottom: 60px; /* sit above input bar */
+        left: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        z-index: 110;
       }
     
+      #screenshots img {
+        width: 60px;
+        margin: 0;
+        border: 2px solid white;
+        cursor: pointer;
+      }
+    
+      #files {
+        position: fixed;
+        bottom: 60px; /* sit above input bar */
+        right: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        z-index: 110;
+      }
+
       #input-bar {
         position: fixed;
         left: 0;
@@ -129,6 +150,7 @@
   </head>
   <body>
     <div id="screenshots"></div>
+    <div id="files"></div>
 
     <div id="response"></div>
 
@@ -138,6 +160,7 @@
     <div id="live-badge" hidden>LIVE</div>
     <script>
       const screenshotsEl = document.getElementById('screenshots');
+      const filesEl = document.getElementById('files');
       const inputBar = document.getElementById('input-bar');
       const inputField = document.getElementById('user-message');
       const responseEl = document.getElementById('response');
@@ -186,7 +209,8 @@
       });
 
       let message = "";
-      let screenshots = [];
+      let screenshotUrls = [];
+      let uploadedFileIds = [];
 
       document.addEventListener("dragover", (e) => e.preventDefault());
       document.addEventListener("drop", (e) => {
@@ -194,7 +218,7 @@
         if (e.dataTransfer.files.length > 0) {
           const file = e.dataTransfer.files[0];
           // Send file path to main process
-          window.ipcRenderer.send("upload-file", { path: file.path, name: file.name });
+          ipcRenderer.send("upload-file", { path: file.path, name: file.name });
         }
       });
 
@@ -211,35 +235,51 @@
         const close = document.createElement("div");
         close.textContent = "✕";
         close.style.position = "absolute";
-        close.style.top = "2px";
-        close.style.right = "4px";
+        close.style.top = "0px";
+        close.style.right = "0px";
         close.style.cursor = "pointer";
-        close.style.color = "red";
-        close.style.background = "rgba(0, 0, 0, 0.5)";
+        close.style.color = "#ff6666";
+        close.style.background = "rgba(0, 0, 0, 0.6)";
         close.style.borderRadius = "50%";
-        close.style.padding = "2px 6px";
+        close.style.fontSize = "16px";
+        close.style.lineHeight = "16px";
+        close.style.width = "18px";
+        close.style.height = "18px";
+        close.style.display = "flex";
+        close.style.alignItems = "center";
+        close.style.justifyContent = "center";
 
-        close.onclick = () => {
+        const removeScreenshot = () => {
           wrapper.remove();
-          screenshots = screenshots.filter(s => !s.includes(filePath));
+          screenshotUrls = screenshotUrls.filter(s => s !== filePath);
+          ipcRenderer.send("screenshot-remove", filePath);
         };
+        close.onclick = removeScreenshot;
+        wrapper.addEventListener("dblclick", removeScreenshot);
 
         wrapper.appendChild(img);
         wrapper.appendChild(close);
         screenshotsEl.appendChild(wrapper);
+        screenshotUrls.push(filePath);
       });
 
       inputField.addEventListener("input", (e) => {
         message = e.target.value;
       });
 
-      ipcRenderer.on("send-to-api", ({mainShots, ocr}) => {
-        screenshots = mainShots;
-        ipcRenderer.send("send-to-api", { message: userArea.value.trim(), screenshots, ocr });
+      ipcRenderer.on("send-to-api", ({ screenshots: shots, ocr }) => {
+        ipcRenderer.send("send-to-api", {
+          message: userArea.value.trim(),
+          screenshots: screenshotUrls,
+          ocr,
+          uploadedFileIds,
+        });
         inputField.value = "";
         message = "";
-        screenshots = [];
+        screenshotUrls = [];
         screenshotsEl.innerHTML = "";
+        uploadedFileIds = [];
+        filesEl.innerHTML = "";
       });
 
       let liveDiv = null;
@@ -284,8 +324,10 @@
       });
 
       ipcRenderer.on("cleared", () => {
-        screenshots = [];
+        screenshotUrls = [];
         screenshotsEl.innerHTML = "";
+        uploadedFileIds = [];
+        filesEl.innerHTML = "";
         responseEl.textContent = "";
         inputBar.style.display = "block";
         inputField.value = "";
@@ -293,12 +335,65 @@
         message = "";
       });
 
-      let uploadedFileIds = [];
-
-      ipcRenderer.on("file-uploaded", (_e, { id, name }) => {
+      ipcRenderer.on("file-uploaded", (_payload) => {
+        const { id, name } = _payload;
         uploadedFileIds.push(id);
-        alert(`File "${name}" uploaded! File ID: ${id}`);
+
+        const wrapper = document.createElement("div");
+        wrapper.style.position = "relative";
+        wrapper.style.display = "inline-block";
+        wrapper.style.margin = "5px";
+
+        const icon = document.createElement("div");
+        icon.textContent = "📄";
+        icon.style.fontSize = "40px";
+        icon.style.display = "flex";
+        icon.style.alignItems = "center";
+        icon.style.justifyContent = "center";
+        icon.style.width = "50px";
+        icon.style.height = "50px";
+
+        const label = document.createElement("div");
+        label.textContent = name;
+        label.style.fontSize = "10px";
+        label.style.color = "white";
+        label.style.width = "60px";
+        label.style.overflow = "hidden";
+        label.style.textOverflow = "ellipsis";
+        label.style.whiteSpace = "nowrap";
+        label.style.textAlign = "center";
+
+        const close = document.createElement("div");
+        close.textContent = "✕";
+        close.style.position = "absolute";
+        close.style.top = "0px";
+        close.style.right = "0px";
+        close.style.cursor = "pointer";
+        close.style.color = "#ff6666";
+        close.style.background = "rgba(0, 0, 0, 0.6)";
+        close.style.borderRadius = "50%";
+        close.style.fontSize = "16px";
+        close.style.lineHeight = "16px";
+        close.style.width = "18px";
+        close.style.height = "18px";
+        close.style.display = "flex";
+        close.style.alignItems = "center";
+        close.style.justifyContent = "center";
+
+        const removeFile = () => {
+          wrapper.remove();
+          uploadedFileIds = uploadedFileIds.filter(fid => fid !== id);
+          ipcRenderer.send("file-remove", id);
+        };
+        close.onclick = removeFile;
+        wrapper.addEventListener("dblclick", removeFile);
+
+        wrapper.appendChild(icon);
+        wrapper.appendChild(label);
+        wrapper.appendChild(close);
+        filesEl.appendChild(wrapper);
       });
+
       ipcRenderer.on("file-upload-error", (_e, msg) => {
         alert("File upload failed: " + msg);
       });

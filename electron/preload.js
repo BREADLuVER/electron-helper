@@ -19,6 +19,8 @@ const VALID_CHANNELS = [
   "upload-file",
   "file-uploaded",
   "file-upload-error",
+  "screenshot-remove",
+  "file-remove",
 ];
 
 contextBridge.exposeInMainWorld("ipcRenderer", {
