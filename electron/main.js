@@ -318,8 +318,8 @@ function registerShortcuts() {
 
       const mainBounds = mainWindow.getBounds();
       const margin = 10;
-      const width  = 700;
-      const height = 700;
+      const width  = 750;
+      const height = 650;
       const x = mainBounds.x + mainBounds.width + margin;
       const y = mainBounds.y;
 
@@ -361,9 +361,12 @@ function registerShortcuts() {
       docWin.on("closed", () => { docWin = null; });
     } else {
       const visible = docWin.isVisible();
-      docWin.setOpacity(visible ? 0 : 1);
-      docWin.setIgnoreMouseEvents(!visible, { forward: true });
-      visible ? docWin.hide() : docWin.show();
+      if (visible) {
+        docWin.hide();
+      } else {
+        docWin.show();
+        docWin.focus();
+      }
     }
   });
 }
