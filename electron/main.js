@@ -269,7 +269,7 @@ function registerShortcuts() {
       const audioWidth = 500;
       const audioHeight = 600;
   
-      const x = mainBounds.x + mainBounds.width + margin;
+      const x = mainBounds.x - audioWidth - margin;
       const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
   
       audioWin = new BrowserWindow({
@@ -318,9 +318,9 @@ function registerShortcuts() {
 
       const mainBounds = mainWindow.getBounds();
       const margin = 10;
-      const width  = 600;
-      const height = 800;
-      const x = mainBounds.x - width - margin; // show to the left of main window
+      const width  = 700;
+      const height = 700;
+      const x = mainBounds.x + mainBounds.width + margin;
       const y = mainBounds.y;
 
       docWin = new BrowserWindow({
