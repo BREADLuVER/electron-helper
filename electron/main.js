@@ -88,7 +88,11 @@ let isVisible = true;
 let screenshots = [];
 let conversationHistory = [];
 let audioHistory = [];
-// ---------- audio‑overlay state ----------
+// ---------- google-doc overlay state ----------
+const GOOGLE_DOC_URL = process.env.GOOGLE_DOC_URL || ""; // set in .env
+let   docWin = null;
+
+// ---------- audio-overlay state ----------
 let audioWin = null;
 let audioStream = null;
 let aai = null;
@@ -315,6 +319,50 @@ function registerShortcuts() {
       startAudioPipeline(audioWin);
     } else {
       stopAudioPipeline();
+    }
+  });
+
+  /* ────────── F6 → toggle protected Google-Doc window ────────── */
+  globalShortcut.register("F6", async () => {
+    if (!GOOGLE_DOC_URL) {
+      console.warn("GOOGLE_DOC_URL env var not set – can't open doc window");
+      return;
+    }
+
+    if (!docWin) {
+      if (!mainWindow) return;
+
+      const mainBounds = mainWindow.getBounds();
+      const margin = 10;
+      const width  = 600;
+      const height = 800;
+      const x = mainBounds.x - width - margin; // show to the left of main window
+      const y = mainBounds.y;
+
+      docWin = new BrowserWindow({
+        width,
+        height,
+        x,
+        y,
+        frame: false,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        transparent: false,
+        hasShadow: true,
+        webPreferences: {
+          contextIsolation: true,
+        },
+      });
+      docWin.setContentProtection(true);
+      docWin.loadURL(GOOGLE_DOC_URL);
+
+      docWin.on("closed", () => { docWin = null; });
+    } else {
+      const visible = docWin.isVisible();
+      docWin.setOpacity(visible ? 0 : 1);
+      docWin.setIgnoreMouseEvents(!visible, { forward: true });
+      visible ? docWin.hide() : docWin.show();
     }
   });
 }
