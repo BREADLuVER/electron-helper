@@ -331,11 +331,12 @@ function registerShortcuts() {
         frame: false,              // frameless for clean look
         alwaysOnTop: true,
         skipTaskbar: true,
-        resizable: false,
+        resizable: true,
         transparent: false,
         hasShadow: true,
         webPreferences: {
           contextIsolation: true,
+          preload: path.join(__dirname, 'docPreload.js'),
         },
       });
       docWin.setContentProtection(true);
@@ -744,4 +745,42 @@ ipcMain.on("screenshot-remove", (_evt, url) => {
 
 ipcMain.on("file-remove", (_evt, fileId) => {
   sessionAttachmentIds.delete(fileId);
+});
+
+// ────────────────────────────────────────────────────────────
+// Window resize from renderer edges
+ipcMain.on("win-resize", (event, { edge, dx, dy }) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+
+  const bounds = win.getBounds();
+
+  switch (edge) {
+    case "left":
+      bounds.x += dx;
+      bounds.width -= dx;
+      break;
+    case "right":
+      bounds.width += dx;
+      break;
+    case "top":
+      bounds.y += dy;
+      bounds.height -= dy;
+      break;
+    case "bottom":
+      bounds.height += dy;
+      break;
+    case "corner":
+      bounds.width += dx;
+      bounds.height += dy;
+      break;
+    default:
+      return;
+  }
+
+  const minW = 300, minH = 200;
+  if (bounds.width < minW) bounds.width = minW;
+  if (bounds.height < minH) bounds.height = minH;
+
+  win.setBounds(bounds);
 });

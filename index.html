@@ -138,6 +138,28 @@
       }
       /* Allow clicks inside buttons/links in the bar if any */
       .drag-bar * { -webkit-app-region: no-drag; }
+
+      /* ——— Bottom-right resize handle ——— */
+      .resize-handle {
+        position: fixed;
+        width: 18px;
+        height: 18px;
+        right: 0; bottom: 0;
+        z-index: 2000;
+        -webkit-app-region: no-drag;
+        cursor: se-resize;
+        background: transparent;
+      }
+      /* triangle visual (optional subtle) */
+      .resize-handle::after {
+        content: '';
+        position: absolute;
+        right: 2px; bottom: 2px;
+        width: 12px; height: 12px;
+        border-right: 2px solid rgba(255,255,255,0.4);
+        border-bottom: 2px solid rgba(255,255,255,0.4);
+        transform: translate(0,0);
+      }
     </style>    
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
@@ -161,6 +183,7 @@
   </head>
   <body>
     <div class="drag-bar"></div>
+    <div class="resize-handle" id="resizeHandle"></div>
     <div id="screenshots"></div>
     <div id="files"></div>
 
@@ -409,6 +432,34 @@
       ipcRenderer.on("file-upload-error", (_e, msg) => {
         alert("File upload failed: " + msg);
       });
+
+      /* ---------- Resize corner logic ---------- */
+      (() => {
+        const handle = document.getElementById('resizeHandle');
+        if (!handle) return;
+        let startX=0, startY=0;
+
+        handle.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          startX = e.screenX;
+          startY = e.screenY;
+
+          function onMove(ev){
+            const dx = ev.screenX - startX;
+            const dy = ev.screenY - startY;
+            if (dx === 0 && dy === 0) return;
+            ipcRenderer.send('win-resize',{ edge:'corner', dx, dy });
+            startX = ev.screenX;
+            startY = ev.screenY;
+          }
+          function onUp(){
+            window.removeEventListener('mousemove',onMove);
+            window.removeEventListener('mouseup',onUp);
+          }
+          window.addEventListener('mousemove',onMove);
+          window.addEventListener('mouseup',onUp);
+        });
+      })();
     </script>
   </body>
 </html>

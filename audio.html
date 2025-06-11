@@ -83,10 +83,30 @@
       background: transparent;
     }
     .drag-bar * { -webkit-app-region: no-drag; }
+
+    /* Bottom-right resize handle */
+    .resize-handle {
+      position: fixed;
+      width: 18px; height: 18px;
+      right: 0; bottom: 0;
+      z-index: 2000;
+      -webkit-app-region: no-drag;
+      cursor: se-resize;
+      background: transparent;
+    }
+    .resize-handle::after {
+      content: '';
+      position: absolute;
+      right: 2px; bottom: 2px;
+      width: 12px; height: 12px;
+      border-right: 2px solid rgba(255,255,255,0.4);
+      border-bottom: 2px solid rgba(255,255,255,0.4);
+    }
   </style>
 </head>
 <body>
   <div class="drag-bar"></div>
+  <div class="resize-handle" id="resizeHandle"></div>
   <h4>Live Transcript</h4>
   <div id="live">…listening…</div>
 
@@ -103,6 +123,33 @@
   </div>
 
   <script>
+    /* Resize corner */
+    (() => {
+      const handle = document.getElementById('resizeHandle');
+      if (!handle) return;
+      let startX=0, startY=0;
+
+      handle.addEventListener('mousedown',(e)=>{
+        e.preventDefault();
+        startX=e.screenX; startY=e.screenY;
+
+        function onMove(ev){
+          const dx = ev.screenX-startX;
+          const dy = ev.screenY-startY;
+          if(dx===0 && dy===0) return;
+          ipc.send('win-resize',{edge:'corner',dx,dy});
+          startX = ev.screenX;
+          startY = ev.screenY;
+        }
+        function onUp(){
+          window.removeEventListener('mousemove',onMove);
+          window.removeEventListener('mouseup',onUp);
+        }
+        window.addEventListener('mousemove',onMove);
+        window.addEventListener('mouseup',onUp);
+      });
+    })();
+
     const ipc = window.ipcRenderer;
     const liveEl    = document.getElementById("live");
     const requestEl = document.getElementById("request");
