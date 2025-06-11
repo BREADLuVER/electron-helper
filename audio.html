@@ -21,7 +21,7 @@
       font-size: 11px;
       color: #ccc;
     }
-    #history, #live, #ai {
+    #live, #ai, #request {
       font-size: 13px;
       line-height: 1.5;
       margin: 4px 0;
@@ -31,20 +31,22 @@
       border-radius: 4px;
       background: rgba(0,0,0,0.3);
     }
-    #history, #live {
+    #live {
       max-height: 110px;
       overflow-y: auto;
-    }
-
-    #ai {
-      flex: 1;  /* Fills remaining space */
-      overflow-y: auto;
-      min-height: 120px;
-    }
-
-    #live {
       font-style: italic;
       color: #ffeb3b;
+    }
+    #request {
+      min-height: 70px;
+      resize: vertical;
+      font-family: inherit;
+      color: #eee;
+    }
+    #ai {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 120px;
     }
     .entry {
       margin: 2px 0;
@@ -75,39 +77,39 @@
   </style>
 </head>
 <body>
-  <h4>Transcript History</h4>
-  <div id="history"></div>
-
   <h4>Live Transcript</h4>
   <div id="live">…listening…</div>
+
+  <h4>Request Message</h4>
+  <textarea id="request" placeholder="Snapshot or type here…"></textarea>
 
   <h4>Assistant</h4>
   <div id="ai"></div>
 
   <div class="controls">
-    <button id="submit-btn">Submit</button>
-    <button id="clear-partial">CP</button>
+    <button id="action-btn">Snapshot</button>
     <button id="clear-btn">Clear</button>
+    <button id="clear-all-btn">Clear All</button>
   </div>
 
   <script>
     const ipc = window.ipcRenderer;
-    const historyEl = document.getElementById("history");
     const liveEl    = document.getElementById("live");
+    const requestEl = document.getElementById("request");
     const aiEl      = document.getElementById("ai");
-    const submitBtn = document.getElementById("submit-btn");
-    const clearBtn  = document.getElementById("clear-btn");
-    const clearPartialBtn = document.getElementById("clear-partial");
+    const actionBtn = document.getElementById("action-btn");
+    const clearBtn    = document.getElementById("clear-btn");
+    const clearAllBtn = document.getElementById("clear-all-btn");
     const pinnedToBottom = c => c.scrollTop + c.clientHeight >= c.scrollHeight - 5;
     
-    let currentText  = "";   // everything we’ve finalised since last Submit
-    let lastPartial  = "";   // the in‑flight phrase AssemblyAI is still updating
+    let currentText  = "";   // accumulated Final transcripts
+    let lastPartial  = "";   // most recent Partial transcript
     let liveAIDiv    = null;
-    let flushUntilFinal  = false;
 
     function renderLive() {
       liveEl.textContent = `${currentText} ${lastPartial}`.trim();
       if (pinnedToBottom(liveEl)) liveEl.scrollTop = liveEl.scrollHeight;
+      updateActionButton();
     }
     
     function shouldAutoScroll(container) {
@@ -115,21 +117,14 @@
     }
 
     ipc.on("transcript-partial", (text) => {
-      if (flushUntilFinal) return;
       lastPartial = text.trim();
       renderLive();
     });
 
     ipc.on("transcript-final", (text) => {
-      if (flushUntilFinal) {
-        flushUntilFinal = false;
-        return;
-      }
-
       if (!text.trim()) return;
-      
+
       currentText = `${currentText} ${text.trim()}`.trim();
-      const div = document.createElement("div");
       lastPartial = "";
       renderLive();
     });
@@ -142,25 +137,40 @@
       aiEl.appendChild(div);
     });
 
-    submitBtn.addEventListener("click", () => {
-      const message = `${currentText} ${lastPartial}`.trim();
-      if (!message) return;
+    function updateActionButton() {
+      actionBtn.textContent = requestEl.value.trim() ? "Submit" : "Snapshot";
+    }
 
-      const div = document.createElement("div");
-      div.className = "entry";
-      div.textContent = message;
-      historyEl.appendChild(div);
-      if (pinnedToBottom(historyEl))
-        historyEl.scrollTop = historyEl.scrollHeight;
-      ipc.send("audio-submit", message);
-      flushUntilFinal = lastPartial.length > 0;
-      currentText = "";
-      lastPartial = "";
-      renderLive();
+    updateActionButton();
+    requestEl.addEventListener("input", updateActionButton);
+
+    actionBtn.addEventListener("click", () => {
+      const reqText = requestEl.value.trim();
+
+      if (reqText) {
+        /* --- Submit flow --- */
+        ipc.send("audio-submit", reqText);
+        requestEl.value = "";
+        currentText = "";
+        lastPartial = "";
+        renderLive();
+      } else {
+        /* --- Snapshot flow --- */
+        const snap = `${currentText} ${lastPartial}`.trim();
+        if (!snap) return;
+        requestEl.value = snap;
+      }
+
+      updateActionButton();
     });
     
     clearBtn.addEventListener("click", () => {
-      historyEl.innerHTML = "";
+      requestEl.value = "";
+      updateActionButton();
+    });
+
+    clearAllBtn.addEventListener("click", () => {
+      requestEl.value = "";
       currentText = "";
       lastPartial = "";
       aiEl.innerHTML = "";
@@ -185,15 +195,6 @@
         liveAIDiv = null;
       }
     });
-  
-  clearPartialBtn.addEventListener("click", () => {
-    currentText   = "";
-    lastPartial   = "";
-    flushUntilFinal = false;        // make sure we resume taking partials
-    renderLive();
-
-    ipc.send("audio-clear-live");
-  });
   </script>
 </body>
 </html>
