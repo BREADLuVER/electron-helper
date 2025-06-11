@@ -372,9 +372,10 @@ function registerShortcuts() {
 }
 
 function moveWindow(deltaX, deltaY) {
-  if (!mainWindow) return;
-  const bounds = mainWindow.getBounds();
-  mainWindow.setBounds({
+  const win = BrowserWindow.getFocusedWindow() || mainWindow;
+  if (!win) return;
+  const bounds = win.getBounds();
+  win.setBounds({
     x: bounds.x + deltaX,
     y: bounds.y + deltaY,
     width: bounds.width,
