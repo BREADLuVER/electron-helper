@@ -126,22 +126,6 @@ function createWindow() {
     }
   });
 
-  mainWindow.on("move", () => {
-    if (!audioWin) return;
-  
-    if (!mainWindow) return;
-    const mainBounds = mainWindow.getBounds();
-    const margin = 10;
-  
-    const audioWidth = audioWin.getBounds().width;
-    const audioHeight = audioWin.getBounds().height;
-  
-    const x = mainBounds.x + mainBounds.width + margin;
-    const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
-  
-    audioWin.setBounds({ x, y, width: audioWidth, height: audioHeight });
-  });
-
   mainWindow.setIgnoreMouseEvents(false);
   mainWindow.setContentProtection(true);
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -344,7 +328,7 @@ function registerShortcuts() {
         height,
         x,
         y,
-        frame: false,
+        frame: false,              // frameless for clean look
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: false,
@@ -356,6 +340,22 @@ function registerShortcuts() {
       });
       docWin.setContentProtection(true);
       docWin.loadURL(GOOGLE_DOC_URL);
+
+      // Inject invisible drag bar once page loads (cross-platform)
+      const DRAG_CSS = `
+        body::before {
+          content: '';
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          height: 20px;
+          -webkit-app-region: drag;
+          background: transparent;
+          z-index: 999999;
+        }
+      `;
+      docWin.webContents.on("did-finish-load", () => {
+        docWin.webContents.insertCSS(DRAG_CSS).catch(() => {});
+      });
 
       docWin.on("closed", () => { docWin = null; });
     } else {
