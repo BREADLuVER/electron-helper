@@ -127,6 +127,17 @@
         z-index: 1000;
       }
       
+      /* ——— Drag bar ——— */
+      .drag-bar {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 20px;
+        -webkit-app-region: drag;
+        background: transparent;
+        pointer-events: auto;
+      }
+      /* Allow clicks inside buttons/links in the bar if any */
+      .drag-bar * { -webkit-app-region: no-drag; }
     </style>    
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
@@ -149,6 +160,7 @@
     </script>
   </head>
   <body>
+    <div class="drag-bar"></div>
     <div id="screenshots"></div>
     <div id="files"></div>
 

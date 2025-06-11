@@ -74,9 +74,19 @@
       color: #eee;
       cursor: pointer;
     }
+    /* Drag bar */
+    .drag-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 20px;
+      -webkit-app-region: drag;
+      background: transparent;
+    }
+    .drag-bar * { -webkit-app-region: no-drag; }
   </style>
 </head>
 <body>
+  <div class="drag-bar"></div>
   <h4>Live Transcript</h4>
   <div id="live">…listening…</div>
 
