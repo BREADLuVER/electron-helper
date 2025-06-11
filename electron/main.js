@@ -12,9 +12,9 @@ import { pathToFileURL } from "url";
 import { runAssistantStream } from "./runAssistantStream.js"; // ⬅ helper above
 import { OpenAI } from "openai";
 import { fileURLToPath } from "url";
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // still used for images
 const BEHAVIORAL_ASSISTANT_ID = process.env.BEHAVIORAL_ASSISTANT_ID;
 const FRONTEND_ASSISTANT_ID = process.env.FRONTEND_ASSISTANT_ID;
+const ocrapiKey = process.env.OCR_SPACE_API_KEY;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import fetch from "node-fetch";
@@ -29,9 +29,8 @@ if (!process.env.ASSEMBLYAI_API_KEY) {
   throw new Error("ASSEMBLYAI_API_KEY is not defined in the environment variables.");
 }
 
-if (!process.env.OCR_SPACE_API_KEY) {
-  throw new Error("OCR_SPACE_API_KEY is not defined in the environment variables.");
-}
+if (!ocrapiKey) throw new Error("OCR_SPACE_API_KEY env var is empty");
+// console.log("[OCR] key starts:", ocrapiKey.slice(0, 6), "… len:", ocrapiKey.length);
 
 import WebSocket from "ws";
 const aaiClient = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY });
@@ -39,11 +38,46 @@ const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg
 
 const TONE_CUE_HEADER = `When providing a answer, follow the tone and voice shown in these examples: natural, messy, in‑the‑moment.`;
 const EXAMPLES = [
-  "Yeah the reason we developed this new product is that when I joined, the QA team was still using this old internal tool that basically just dumped raw logs. If you wanted to figure out what went wrong — like some color flickering or a sync issue — you had to open these massive text files and scan through timestamps.It worked, but it was super manual and didn’t scale well, especially with newer GPU features like HDR or variable refresh. That’s where the idea for the Display Insights Portal came in — we wanted to build a web tool that could actually show real-time telemetry, so engineers could catch problems as they happened, instead of digging through logs afterward.",
-  "So at AMD I was on a lean team — like six of us total — and I handled the front end for our GPU telemetry dashboard. But because we were small, I also had to sync a lot with backend and QA. There was one stretch where we were getting bug reports from QA, new schema changes from firmware, and on top of that, the display team wanted to demo a new data stream for HDR validation. So the way I handled it was pretty simple — I started joining their triage meetings twice a week. Just listening in helped me catch blockers early. I also set up a shared Notion page to track which endpoints were stable and which ones were still changing, so front end wouldn’t keep breaking. It wasn’t anything fancy, but keeping that cross-team thread helped me avoid surprises and prioritize the right features week to week.",
-  "This was during a release crunch — we were maybe five days out, and QA flagged that one of our GPU metrics was randomly vanishing from the UI. Totally intermittent. Some testers saw it, some didn’t. First instinct was to blame the WebSocket stream, but logs weren’t consistent. So I paired with a backend dev and we replayed old packets with mock data to narrow it down. Turned out one of our front-end filters had a typo that dropped the metric if its value was null, which was valid in some scenarios. Quick fix — but super subtle. After that, I wrote a small test harness to load every metric with dummy values, just to catch stuff like that early. Wasn’t glamorous, but it saved us the next time someone pushed an edge case.",
+  {
+    title: "Mistake In Work",
+    content: [
+      "During my contract at Eduphoria, I misconfigured an endpoint that was supposed to sync course video metadata from Firebase into our backend. The frontend team pinged me during QA because the video thumbnails weren’t loading.",
+      "Turned out I had pushed a cloud function without updating the token permissions — it was silently failing authentication. I caught it fast using Postman and Firebase logs, rolled back the function, and re-deployed with the right service role.",
+      "That whole incident reminded me to never push code under time pressure without running through integration tests first — even if it's \"just a token update.\" Now I always run checklist-based deploys, especially when deadlines are tight."
+    ].join("\n")
+  },
 ];
 const RUN_INSTRUCTION = `
+Help Brad Yin answer interview questions with clear, realistic speech. Mirror the tone and rhythm from his real interviews.
+
+Speak like a grounded engineer with real-world experience, not like a blog or chatbot.
+
+Always sound like you're thinking aloud: revise mid-sentence if needed, feel things out in real time, use plain analogies, and don’t rush to wrap up.
+
+When answering questions:
+
+• QUESTION TYPE: GENERAL TECH CONCEPT - Keep it short and plain dont fetch from vector databases. - Explain like to a junior dev. - Use 2-sentence paragraphs or 3 bullets. - Provide a example of real world usage.
+
+• QUESTION TYPE: BEHAVIORAL - Pull from Brad’s actual work experience and build upon it. - Expand the fictional story into a 500+ word, first-person answer. - Keep it exploratory, believable, and grounded. - Build the setting: product, team, tech, deadlines, pressure. - Show emotional or practical tension—don’t sanitize. - Use pacing: pauses, clarifiers, side comments. - No summaries. No “this taught me” endings. Let the story carry the weight. - No conclutions
+
+• QUESTION TYPE: FOLLOW-UP / MORE DETAIL - Continue where the last thought left off. - Expand one or two things. Don’t start over. - No intros, no conclusions. - Avoid polish.
+
+SPEECH FLOW
+
+Break thoughts into 1–2 sentence chunks.
+Use casual phrasing: "we ended up...", "what I noticed...", "I figured..."
+Vary sentence length, mimic real speech rhythm.
+No formal verbs (avoid “emphasized”, “ensured”, etc.)
+Keep list items short—no more than 3.
+Skip jargon. If needed, explain it simply or spell out acronyms.
+TONE
+
+Conversational, calm, and reflective.
+Show your thought process.
+Use "we", "my team", or "I" — sound like you’re on a panel.
+Don’t wrap up with reflections unless explicitly asked.
+Avoid filler like “overall,” “ultimately,” or “it taught me.”
+Your job: Help Brad sound like himself, just a sharper and clearer version.
 
 `;
 const sessionAttachmentIds = new Set();
@@ -58,15 +92,13 @@ let audioWin = null;
 let audioStream = null;
 let aai = null;
 let audioVisible = false;
-let   recorder       = null;
-let   currentOutput  = null;
-let recProc   = null;
-let ws        = null;
+let recProc = null;
+let ws = null;
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  const winWidth = 500;
+  const winWidth = 600;
   const winHeight = 600;
   const x = Math.floor((width - winWidth) / 2);
   const y = Math.floor((height - winHeight) / 2);
@@ -118,13 +150,13 @@ async function extractText(fp) {
   const res = await ocrSpace(
     fp,
     {
-      apiKey: process.env.OCR_SPACE_API_KEY,
+      ocrapiKey,
       OCREngine: "1",
       language: "eng",
       isOverlayRequired: false,
       scale: true,
       filetype: "PNG",
-      url: "https://apipro1.ocr.space/parse/image"
+      url: "https://apipro2.ocr.space/parse/image"
     }
   );
 
@@ -512,7 +544,10 @@ ipcMain.on("audio-submit", async (_evt, question) => {
   console.log("[audio] submitting audio history to OpenAI…");
   audioWin.webContents.send("assistant-stream-start");
   const wrapped = wrapQuestion(question);
-  const userMsg = { role: "user", content: wrapped };
+  const userMsg = {
+    role: "user",
+    content: [{ type: "text", text: wrapped }],
+  };
   let finalText = "";
   try {
       await runAssistantStream(                        // ② same helper you use for screenshots
@@ -524,7 +559,7 @@ ipcMain.on("audio-submit", async (_evt, question) => {
         }
       );
       audioWin.webContents.send("assistant-stream-end");   // ④ done
-      console.log("[audio] OpenAI response:", reply);
+      console.log("[audio] OpenAI response:", finalText);
       audioHistory.push({ role: "assistant", content: finalText });
     } catch (e) {
       console.error("[audio-submit]", e);
