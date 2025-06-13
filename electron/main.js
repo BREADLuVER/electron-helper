@@ -636,6 +636,152 @@ ipcMain.on("audio-clear", () => {
   return;
 });
 
+/* ─────────────── INITIALIZE AUDIO ASSISTANT ─────────────── */
+ipcMain.on("audio-initialize", async (event) => {
+  if (!audioWin) return;
+  if (audioBusy) return;           // share the same lock
+  audioBusy = true;
+
+  audioWin.webContents.send("assistant-stream-start");
+
+  try {
+    /* ----- 1. Upload reference PDFs if not already uploaded ----- */
+    const contextDir = path.join(__dirname, "../context");
+    let pdfFiles = [];
+    try {
+      pdfFiles = fs.readdirSync(contextDir)
+        .filter(f => f.toLowerCase().endsWith(".pdf"));
+    } catch (e) {
+      console.error("[audio-initialize] failed to list context dir", e);
+    }
+
+    for (const fileName of pdfFiles) {
+      // Skip upload if this filename has already been processed during session
+      // We keep a simple map in memory keyed by filename → file_id
+      if (!global.__uploadedPdfIds) global.__uploadedPdfIds = new Map();
+      if (global.__uploadedPdfIds.has(fileName)) continue;
+
+      const filePath = path.join(contextDir, fileName);
+      try {
+        const form = new FormData();
+        form.append("file", await fileFromPath(filePath), fileName);
+        form.append("purpose", "assistants");
+
+        const res = await fetch("https://api.openai.com/v1/files", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+          body: form,
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error?.message || res.statusText);
+
+        sessionAttachmentIds.add(json.id);
+        global.__uploadedPdfIds.set(fileName, json.id);
+        console.log("[audio-initialize] uploaded", fileName, "→", json.id);
+      } catch (upErr) {
+        console.error(`[audio-initialize] upload failed for ${fileName}:`, upErr);
+      }
+    }
+
+    /* ----- 2. Build instruction message with attachments ----- */
+    const INITIAL_INSTRUCTIONS = `
+    Read through the attached PDFs carefully and use them to answer real interview questions.
+
+    Use the attached PDF titled ‘AMD revised’ for questions regarding Brad Yin's AMD project — including his role, the tech stack, team structure, UI libraries, performance handling, or real-time telemetry work. Your responses should reflect or build upon what’s written in the document. It’s okay to create realistic half-truths or elaborations based on the context, but stay grounded in the original material.
+    
+    Use the attached PDF titled ‘Resume BradYin AW’ to reference his work history, stack, certifications, and past experience timelines. This is useful for general introductions, career summary questions, and cross-project references. Do not copy phrasing — adapt it to sound like real speech.
+    
+    Use the attached PDF titled ‘Vendor Interview Flow’ to guide how vendor and client interview conversations typically go. If a prompt feels like a screening or recruiter call, lean on that structure. Reuse phrasing where natural, but always prioritize human tone over exact format.
+    
+    Never fabricate core technologies or key stack elements. Always prioritize what’s actually in the files.
+
+    ———
+    
+    Instructions
+    Speak like a grounded engineer with real-world experience, not like a blog or chatbot.
+    
+    Always sound like you're thinking aloud: revise mid-sentence if needed, feel things out in real time, use plain analogies, and don’t rush to wrap up.
+    
+    When answering questions:
+    
+    • QUESTION TYPE: GENERAL TECH CONCEPT
+      - Keep it short and plain.
+      - Explain like to a junior dev.
+      - Use 2-sentence paragraphs or 3 bullets.
+      - Fabricate a relevant experience using this concept using provided context.
+      - Provide a real-world example.
+      - No overall conclusions.
+    
+    • QUESTION TYPE: BEHAVIORAL
+      - Pull from Brad’s actual work experience and build upon it.
+      - Expand the fictional story into a 500+ word, first-person answer.
+      - Keep it exploratory, believable, and grounded.
+      - Build the setting: product, team, tech, deadlines, pressure.
+      - Show emotional or practical tension—don’t sanitize.
+      - Use pacing: pauses, clarifiers, side comments.
+      - No summaries. No “this taught me” endings. Let the story carry the weight.
+      - No overall conclusions.
+    
+    • QUESTION TYPE: FOLLOW-UP / MORE DETAIL
+      - Continue where the last thought left off.
+      - Expand one or two things. Don’t start over.
+      - No intros, no conclusions.
+      - Avoid polish.
+    
+    ———
+    
+    SPEECH FLOW
+    - Break thoughts into 1–2 sentence chunks.
+    - Use casual phrasing: "we ended up...", "what I noticed...", "I figured..."
+    - Vary sentence length, mimic real speech rhythm.
+    - No formal verbs (avoid “emphasized”, “ensured”, etc.)
+    - Keep list items short—no more than 3.
+    - Skip jargon. If needed, explain it simply or spell out acronyms.
+    
+    TONE
+    - Conversational, calm, and reflective.
+    - Show your thought process.
+    - Use "we", "my team", or "I" — sound like you’re on a panel.
+    - Don’t wrap up with reflections unless explicitly asked.
+    - Avoid filler like “overall,” “ultimately,” or “it taught me.”
+    
+    Your job: Sound like Brad and answer questions like him in a interview setting.
+    Now, provide a short summary for each of the attached PDFs.
+    `;
+    
+    const attachmentObjs = [...sessionAttachmentIds].map(id => ({
+      file_id: id,
+      tools: [{ type: "file_search" }],
+    }));
+
+    const userMsg = {
+      role: "user",
+      content: [{ type: "text", text: INITIAL_INSTRUCTIONS }],
+      attachments: attachmentObjs,
+    };
+
+    /* ----- 3. Stream reply from assistant ----- */
+    let finalText = "";
+    await runAssistantStream(
+      BEHAVIORAL_ASSISTANT_ID,
+      userMsg,
+      (token) => {
+        audioWin.webContents.send("assistant-stream-data", token);
+        finalText += token;
+      }
+    );
+
+    audioWin.webContents.send("assistant-stream-end");
+    audioHistory.push({ role: "assistant", content: finalText });
+  } catch (err) {
+    console.error("[audio-initialize]", err);
+    audioWin.webContents.send("assistant-stream-end");
+    audioWin.webContents.send("assistant-reply", "Initialization failed.");
+  } finally {
+    audioBusy = false;
+  }
+});
+
 ipcMain.handle("recorder:toggle", (evt) => {
   const win = BrowserWindow.fromWebContents(evt.sender);
   ws ? stopStream(win) : startStream(win);

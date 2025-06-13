@@ -13,6 +13,7 @@ const VALID_CHANNELS = [
   "transcript-final",
   "assistant-reply",
   "audio-submit",
+  "audio-initialize",
   "audio-clear",
   "recorder:status", "recorder:error",
   "recorder:partial", "recorder:final",

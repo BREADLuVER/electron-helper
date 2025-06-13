@@ -118,6 +118,7 @@
 
   <div class="controls">
     <button id="action-btn">Snapshot</button>
+    <button id="init-btn">Initialize</button>
     <button id="clear-btn">Clear</button>
     <button id="clear-all-btn">Clear All</button>
   </div>
@@ -155,6 +156,7 @@
     const requestEl = document.getElementById("request");
     const aiEl      = document.getElementById("ai");
     const actionBtn = document.getElementById("action-btn");
+    const initBtn   = document.getElementById("init-btn");
     const clearBtn    = document.getElementById("clear-btn");
     const clearAllBtn = document.getElementById("clear-all-btn");
     const pinnedToBottom = c => c.scrollTop + c.clientHeight >= c.scrollHeight - 5;
@@ -233,6 +235,10 @@
       aiEl.innerHTML = "";
       renderLive();
       ipc.send("audio-clear");
+    });
+
+    initBtn.addEventListener("click", () => {
+      ipc.send("audio-initialize");
     });
 
     ipc.on("assistant-stream-start", () => {
