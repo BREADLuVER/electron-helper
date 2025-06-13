@@ -100,6 +100,94 @@ let audioVisible = false;
 let recProc = null;
 let ws = null;
 
+// User-selected device names (populated via renderer dropdown)
+let selectedMic = null;       // string | null
+let selectedSys = null;       // string | null (loop-back / system audio)
+
+/* ──────────────────────────────────────────────────────────────── */
+// Utility – enumerate audio capture devices using FFmpeg
+async function listAudioDevices() {
+  if (process.platform !== "win32") {
+    // TODO: add darwin/linux support later
+    return [];
+  }
+
+  const parse = (stderr) => {
+    const devices = [];
+    stderr.split(/\r?\n/).forEach((line) => {
+      // Match a quoted device name and capture the trailing type in parentheses
+      // Example: [dshow @ ...] "Microphone (Realtek(R) Audio)" (audio)
+      const m = line.match(/"([^\"]+)"\s*\((audio)\)/i);
+      if (m) devices.push(m[1]);
+    });
+    return devices;
+  };
+
+  const dshowDevices = await new Promise((resolve) => {
+    const proc = spawn(ffmpegPath, [
+      "-list_devices", "true", "-f", "dshow", "-i", "dummy",
+    ]);
+    let out = "";
+    proc.stderr.on("data", (b) => (out += b));
+    proc.on("close", () => {
+      if (!out.trim()) console.warn("[audio] dshow enumeration produced no output");
+      else if (!parse(out).length) {
+        console.warn("[audio] dshow raw output (no devices parsed):\n", out);
+      }
+      resolve(parse(out));
+    });
+  });
+
+  if (dshowDevices.length) {
+    console.log("[audio] DirectShow devices:", dshowDevices);
+    return [...new Set(dshowDevices)];
+  }
+
+  // --- fallback to WASAPI enumeration (loopback friendly) ---
+  const wasapiDevices = await new Promise((resolve) => {
+    const proc = spawn(ffmpegPath, [
+      "-list_devices", "true", "-f", "wasapi", "-i", "dummy",
+    ]);
+    let out = "";
+    proc.stderr.on("data", (b) => (out += b));
+    proc.on("close", () => {
+      if (!out.trim()) console.warn("[audio] wasapi enumeration produced no output");
+      else if (!parse(out).length) {
+        console.warn("[audio] wasapi raw output (no devices parsed):\n", out);
+      }
+      resolve(parse(out));
+    });
+  });
+
+  console.log("[audio] WASAPI devices:", wasapiDevices);
+
+  return [...new Set(wasapiDevices)];
+}
+
+/* ───────────────────────── IPC: device discovery / selection ───────────────────────── */
+
+ipcMain.on("audio-get-devices", async (event) => {
+  try {
+    const list = await listAudioDevices();
+    event.sender.send("audio-device-list", list);
+  } catch (e) {
+    console.error("[audio-get-devices]", e);
+    event.sender.send("audio-device-list", []);
+  }
+});
+
+ipcMain.on("audio-set-devices", (_evt, { mic, sys }) => {
+  const changed = mic !== selectedMic || sys !== selectedSys;
+  selectedMic = mic || null;
+  selectedSys = sys || null;
+
+  if (changed && audioStream && audioWin) {
+    console.log("[audio] device change detected – restarting pipeline…");
+    stopAudioPipeline();
+    startAudioPipeline(audioWin);
+  }
+});
+
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
@@ -449,29 +537,60 @@ async function startAudioPipeline(win) {
     return;
   }
 
-  console.log("[audio] spawning FFmpeg…");
-  audioStream = spawn(ffmpegPath, [
-    "-f", "dshow",
-    "-i", "audio=Stereo Mix (Realtek(R) Audio)",
-    "-ac", "1",          // 1 channel  (mono)
-    "-ar", "16000",      // 16 kHz
-    "-f", "s16le",       // raw PCM 16‑bit LE
-    "-"                  // output to stdout pipe
-  ]);
+  /* --------------------------------------------------------- */
+  // Build dynamic FFmpeg args based on user-selected devices
+  const inputs = [];
 
-  audioStream.stderr.on("data", data => {
+  const makeDShow = (name) => ["-f", "dshow", "-i", `audio=${name}`];
+
+  if (selectedSys) inputs.push(makeDShow(selectedSys));
+  if (selectedMic) inputs.push(makeDShow(selectedMic));
+
+  // Fallback: pick first available mic if none chosen
+  if (inputs.length === 0) {
+    console.warn("[audio] no devices selected – attempting default device");
+    inputs.push(makeDShow("default"));
+  }
+
+  const filterArgs = inputs.length === 2
+    ? ["-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2"]
+    : [];
+
+  const ffArgs = [
+    "-hide_banner", "-loglevel", "error",
+    ...inputs.flat(),
+    ...filterArgs,
+    "-ac", "1",
+    "-ar", "16000",
+    "-sample_fmt", "s16",
+    "-f", "s16le",
+    "-"
+  ];
+
+  console.log("[audio] spawning FFmpeg with args:", ffArgs.join(" "));
+
+  const proc = spawn(ffmpegPath, ffArgs);
+  audioStream = proc;               // keep global ref for stop()
+
+  proc.stderr.on("data", data => {
     console.error("[ffmpeg stderr]", data.toString());
     return;
   });
-  audioStream.on("error", err => {
+  proc.on("error", err => {
     console.error("[ffmpeg spawn error]", err);
     return;
   });
-  audioStream.on("close", (code, signal) => {
+  proc.on("close", (code, signal) => {
     console.log(`[ffmpeg exited] code=${code}, signal=${signal}`);
     audioStream = null;
     return;
   });
+
+  if (!proc.stdout) {
+    console.error("[audio] FFmpeg did not provide stdout – aborting audio pipeline");
+    stopAudioPipeline();
+    return;
+  }
 
   console.log("[audio] initializing AssemblyAI transcriber…");
 
@@ -514,9 +633,9 @@ async function startAudioPipeline(win) {
   });
 
   await aai.connect();
-  console.log("[AssemblyAI] WebSocket connected");
+  console.log("[audio] WebSocket connected");
 
-  audioStream.stdout.on("data", chunk => {
+  proc.stdout.on("data", chunk => {
     if (!isReady) {
       bufferQueue.push(chunk);
     } else {
@@ -687,20 +806,20 @@ ipcMain.on("audio-initialize", async (event) => {
     const INITIAL_INSTRUCTIONS = `
     Read through the attached PDFs carefully and use them to answer real interview questions.
 
-    Use the attached PDF titled ‘AMD revised’ for questions regarding Brad Yin's AMD project — including his role, the tech stack, team structure, UI libraries, performance handling, or real-time telemetry work. Your responses should reflect or build upon what’s written in the document. It’s okay to create realistic half-truths or elaborations based on the context, but stay grounded in the original material.
+    Use the attached PDF titled 'AMD revised' for questions regarding Brad Yin's AMD project — including his role, the tech stack, team structure, UI libraries, performance handling, or real-time telemetry work. Your responses should reflect or build upon what's written in the document. It's okay to create realistic half-truths or elaborations based on the context, but stay grounded in the original material.
     
-    Use the attached PDF titled ‘Resume BradYin AW’ to reference his work history, stack, certifications, and past experience timelines. This is useful for general introductions, career summary questions, and cross-project references. Do not copy phrasing — adapt it to sound like real speech.
+    Use the attached PDF titled 'Resume BradYin AW' to reference his work history, stack, certifications, and past experience timelines. This is useful for general introductions, career summary questions, and cross-project references. Do not copy phrasing — adapt it to sound like real speech.
     
-    Use the attached PDF titled ‘Vendor Interview Flow’ to guide how vendor and client interview conversations typically go. If a prompt feels like a screening or recruiter call, lean on that structure. Reuse phrasing where natural, but always prioritize human tone over exact format.
+    Use the attached PDF titled 'Vendor Interview Flow' to guide how vendor and client interview conversations typically go. If a prompt feels like a screening or recruiter call, lean on that structure. Reuse phrasing where natural, but always prioritize human tone over exact format.
     
-    Never fabricate core technologies or key stack elements. Always prioritize what’s actually in the files.
+    Never fabricate core technologies or key stack elements. Always prioritize what's actually in the files.
 
     ———
     
     Instructions
     Speak like a grounded engineer with real-world experience, not like a blog or chatbot.
     
-    Always sound like you're thinking aloud: revise mid-sentence if needed, feel things out in real time, use plain analogies, and don’t rush to wrap up.
+    Always sound like you're thinking aloud: revise mid-sentence if needed, feel things out in real time, use plain analogies, and don't rush to wrap up.
     
     When answering questions:
     
@@ -713,18 +832,18 @@ ipcMain.on("audio-initialize", async (event) => {
       - No overall conclusions.
     
     • QUESTION TYPE: BEHAVIORAL
-      - Pull from Brad’s actual work experience and build upon it.
+      - Pull from Brad's actual work experience and build upon it.
       - Expand the fictional story into a 500+ word, first-person answer.
       - Keep it exploratory, believable, and grounded.
       - Build the setting: product, team, tech, deadlines, pressure.
-      - Show emotional or practical tension—don’t sanitize.
+      - Show emotional or practical tension—don't sanitize.
       - Use pacing: pauses, clarifiers, side comments.
-      - No summaries. No “this taught me” endings. Let the story carry the weight.
+      - No summaries. No "this taught me" endings. Let the story carry the weight.
       - No overall conclusions.
     
     • QUESTION TYPE: FOLLOW-UP / MORE DETAIL
       - Continue where the last thought left off.
-      - Expand one or two things. Don’t start over.
+      - Expand one or two things. Don't start over.
       - No intros, no conclusions.
       - Avoid polish.
     
@@ -734,16 +853,16 @@ ipcMain.on("audio-initialize", async (event) => {
     - Break thoughts into 1–2 sentence chunks.
     - Use casual phrasing: "we ended up...", "what I noticed...", "I figured..."
     - Vary sentence length, mimic real speech rhythm.
-    - No formal verbs (avoid “emphasized”, “ensured”, etc.)
+    - No formal verbs (avoid "emphasized", "ensured", etc.)
     - Keep list items short—no more than 3.
     - Skip jargon. If needed, explain it simply or spell out acronyms.
     
     TONE
     - Conversational, calm, and reflective.
     - Show your thought process.
-    - Use "we", "my team", or "I" — sound like you’re on a panel.
-    - Don’t wrap up with reflections unless explicitly asked.
-    - Avoid filler like “overall,” “ultimately,” or “it taught me.”
+    - Use "we", "my team", or "I" — sound like you're on a panel.
+    - Don't wrap up with reflections unless explicitly asked.
+    - Avoid filler like "overall", "ultimately", or "it taught me."
     
     Your job: Sound like Brad and answer questions like him in a interview setting.
     Now, provide a short summary for each of the attached PDFs.

@@ -23,6 +23,9 @@ const VALID_CHANNELS = [
   "screenshot-remove",
   "file-remove",
   "win-resize",
+  "audio-get-devices",
+  "audio-device-list",
+  "audio-set-devices",
 ];
 
 contextBridge.exposeInMainWorld("ipcRenderer", {
@@ -45,6 +48,13 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
     if (VALID_CHANNELS.includes(channel)) {
       ipcRenderer.once(channel, (_event, ...args) => listener(...args));
     }
+  },
+
+  invoke(channel, data) {
+    if (VALID_CHANNELS.includes(channel)) {
+      return ipcRenderer.invoke(channel, data);
+    }
+    return Promise.reject(new Error("Invalid channel"));
   },
 });
 
