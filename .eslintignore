@@ -1,0 +1,5 @@
+dist-electron/**
+dist/**
+electron/docPreload.js
+electron/preload.js
+electron/config.js 

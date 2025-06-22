@@ -154,13 +154,16 @@
     sysSel.addEventListener('change', sendDeviceSelection);
     micSel.addEventListener('change', sendDeviceSelection);
 
-    ipc.on('audio-device-list', (list) => {
-      populateSelect(sysSel, list);
-      populateSelect(micSel, list);
-      // Auto-select first device as mic if available
-      if (list.length && !micSel.value) {
-        micSel.value = list[0];
+    ipc.on('audio-device-list', ({ micDevices, sysDevices }) => {
+      populateSelect(micSel, micDevices);
+      populateSelect(sysSel, sysDevices);
+
+      // Ensure same device isn't selected in both dropdowns
+      if (sysSel.value && sysSel.value === micSel.value) {
+        sysSel.value = '';
       }
+
+      if (!micSel.value && micDevices.length) micSel.value = micDevices[0];
       sendDeviceSelection();
     });
 

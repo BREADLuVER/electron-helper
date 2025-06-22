@@ -1,11 +1,11 @@
 import "electron";
 import "path";
-import { s as a, c as d } from "./main-B8bovOR5.js";
+import { s, c } from "./main-B4QskCOd.js";
 import "child_process";
 import "fs";
 import "os";
 import "url";
 export {
-  a as startAudioPipeline,
-  d as stopAudioPipeline
+  s as startAudioPipeline,
+  c as stopAudioPipeline
 };

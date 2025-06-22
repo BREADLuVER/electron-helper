@@ -9,32 +9,35 @@ import { AssemblyAI } from "assemblyai";
 import fs from "fs";
 import os from "os";
 import { pathToFileURL } from "url";
-import { runAssistantStream } from "./runAssistantStream.js"; // ⬅ helper above
-import { OpenAI } from "openai";
 import { fileURLToPath } from "url";
-const BEHAVIORAL_ASSISTANT_ID = process.env.BEHAVIORAL_ASSISTANT_ID;
-const FRONTEND_ASSISTANT_ID = process.env.FRONTEND_ASSISTANT_ID;
-const ocrapiKey = process.env.OCR_SPACE_API_KEY;
+import { config } from "./config.js";
+import fetch from "node-fetch";
+import { FormData } from "formdata-node";
+import { fileFromPath } from "formdata-node/file-from-path";
+import { runAssistantStream } from "./runAssistantStream.js";
+import { resolveFfmpegPath } from "./ffmpegResolver.js";
+
+// -------------------- Runtime config constants --------------------
+const BEHAVIORAL_ASSISTANT_ID = config.BEHAVIORAL_ASSISTANT_ID;
+const FRONTEND_ASSISTANT_ID = config.FRONTEND_ASSISTANT_ID;
+const ocrapiKey = config.OCR_SPACE_API_KEY;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-import fetch from "node-fetch";
-import { FormData } from 'formdata-node';
-import { fileFromPath } from 'formdata-node/file-from-path';
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error("OPENAI_API_KEY is not defined in the environment variables.");
+if (!config.OPENAI_API_KEY) {
+  throw new Error("OPENAI_API_KEY is not defined in the configuration.");
 }
 
-if (!process.env.ASSEMBLYAI_API_KEY) {
-  throw new Error("ASSEMBLYAI_API_KEY is not defined in the environment variables.");
+if (!config.ASSEMBLYAI_API_KEY) {
+  throw new Error("ASSEMBLYAI_API_KEY is not defined in the configuration.");
 }
 
 if (!ocrapiKey) throw new Error("OCR_SPACE_API_KEY env var is empty");
 // console.log("[OCR] key starts:", ocrapiKey.slice(0, 6), "… len:", ocrapiKey.length);
 
 import WebSocket from "ws";
-const aaiClient = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY });
-const ffmpegPath = "C:\\Users\\bread\\ffmpeg-7.1.1-essentials_build\\bin\\ffmpeg.exe";
+const aaiClient = new AssemblyAI({ apiKey: config.ASSEMBLYAI_API_KEY });
+const ffmpegPath = resolveFfmpegPath();
 
 const TONE_CUE_HEADER = `When providing a answer, follow the tone and voice shown in these examples: natural, messy, in‑the‑moment.`;
 const EXAMPLES = [
@@ -43,8 +46,8 @@ const EXAMPLES = [
     content: [
       "During my contract at Eduphoria, I misconfigured an endpoint that was supposed to sync course video metadata from Firebase into our backend. The frontend team pinged me during QA because the video thumbnails weren't loading.",
       "Turned out I had pushed a cloud function without updating the token permissions — it was silently failing authentication. I caught it fast using Postman and Firebase logs, rolled back the function, and re-deployed with the right service role.",
-      "That whole incident reminded me to never push code under time pressure without running through integration tests first — even if it's \"just a token update.\" Now I always run checklist-based deploys, especially when deadlines are tight."
-    ].join("\n")
+      `That whole incident reminded me to never push code under time pressure without running through integration tests first — even if it's "just a token update." Now I always run checklist-based deploys, especially when deadlines are tight.`,
+    ].join("\n"),
   },
 ];
 const RUN_INSTRUCTION = `
@@ -79,6 +82,33 @@ Don't wrap up with reflections unless explicitly asked.
 Avoid filler like "overall", "ultimately", or "it taught me."
 Your job: Help Brad sound like himself, just a sharper and clearer version.
 
+Examples:
+🔧 1. "Accountable for proactively leading or supporting software engineering activities…"
+Professional Senior Soundbite:
+
+"At AMD, I was responsible for front-end architecture on a telemetry portal used by internal QA teams to validate display performance across Radeon GPUs. I helped define the initial component layout, state management strategy, and testing approach.
+
+One of the first calls I made was shifting away from Redux for async state and instead standardizing on React Query, which helped reduce boilerplate and improved cache consistency across views. I also introduced a scoped folder structure based on feature modules and wrote shared components for tables, filter panels, and error boundaries.
+
+On the team side, I partnered closely with our QA automation lead and two firmware engineers to ensure our frontend matched the telemetry schema being pushed from embedded devices. That cross-functional loop was key to delivering reliable visualization features on tight release timelines."
+
+🤝 3. "Collaborates with Product Manager to refine stories and acceptance criteria…"
+Professional Senior Soundbite:
+
+"This has been a consistent part of my workflow. At Rosenblum, I worked directly with our intake manager — essentially the product owner — to define how OCR results should be validated and presented before entering the firm's CMS.
+
+The legal team often submitted vague tickets like 'flag mismatches' or 'fix OCR accuracy', so I got into the habit of doing short discovery calls, sharing mockups via Figma, and turning loose requests into specific user stories — e.g., 'show diff when OCR confidence is below threshold' or 'let staff override mismatched fields with one click'.
+
+I also ran lightweight UAT sessions with legal staff using staging links. Their feedback helped us refine edge cases we hadn't initially considered, like ticket formats that varied across jurisdictions. I kept these acceptance rules documented and versioned alongside the codebase."
+
+📈 1. "What are some key SEO metrics you track or care about?"
+How to answer like a senior:
+
+"I've mostly worked on internal tools, but I've had a few client-facing projects where SEO mattered — particularly at Rosenblum Law, where search visibility was tied directly to inbound leads.
+
+The key metrics we tracked were Core Web Vitals — especially First Contentful Paint and Cumulative Layout Shift — because they directly impact rankings. We also monitored crawl errors, structured data validation, and page indexing status using Google Search Console.
+
+I also worked with marketing to set up dynamic Open Graph tags and ensured proper semantic HTML so our legal pages would render well on mobile and social platforms.";
 `;
 const sessionAttachmentIds = new Set();
 
@@ -89,8 +119,8 @@ let screenshots = [];
 let conversationHistory = [];
 let audioHistory = [];
 // ---------- google-doc overlay state ----------
-const GOOGLE_DOC_URL = process.env.GOOGLE_DOC_URL || ""; // set in .env
-let   docWin = null;
+const GOOGLE_DOC_URL = config.GOOGLE_DOC_URL || ""; // from config
+let docWin = null;
 
 // ---------- audio-overlay state ----------
 let audioWin = null;
@@ -101,82 +131,100 @@ let recProc = null;
 let ws = null;
 
 // User-selected device names (populated via renderer dropdown)
-let selectedMic = null;       // string | null
-let selectedSys = null;       // string | null (loop-back / system audio)
+let selectedMic = null; // string | null
+let selectedSys = null; // string | null (loop-back / system audio)
 
 /* ──────────────────────────────────────────────────────────────── */
 // Utility – enumerate audio capture devices using FFmpeg
 async function listAudioDevices() {
   if (process.platform !== "win32") {
-    // TODO: add darwin/linux support later
-    return [];
+    // TODO: macOS/Linux enumeration later
+    return { micDevices: [], sysDevices: [] };
   }
 
-  const parse = (stderr) => {
-    const devices = [];
+  // --- helper to parse quoted audio device names ---
+  const parseList = (stderr) => {
+    const names = [];
     stderr.split(/\r?\n/).forEach((line) => {
-      // Match a quoted device name and capture the trailing type in parentheses
-      // Example: [dshow @ ...] "Microphone (Realtek(R) Audio)" (audio)
-      const m = line.match(/"([^\"]+)"\s*\((audio)\)/i);
-      if (m) devices.push(m[1]);
+      const m = line.match(/"([^"]+)"\s*\((audio)\)/i);
+      if (m) names.push(m[1]);
     });
-    return devices;
+    return names;
   };
 
-  const dshowDevices = await new Promise((resolve) => {
-    const proc = spawn(ffmpegPath, [
-      "-list_devices", "true", "-f", "dshow", "-i", "dummy",
-    ]);
-    let out = "";
-    proc.stderr.on("data", (b) => (out += b));
-    proc.on("close", () => {
-      if (!out.trim()) console.warn("[audio] dshow enumeration produced no output");
-      else if (!parse(out).length) {
-        console.warn("[audio] dshow raw output (no devices parsed):\n", out);
-      }
-      resolve(parse(out));
+  // run ffmpeg with given args and capture stderr
+  const runEnum = async (label, args) => {
+    return new Promise((resolve) => {
+      const proc = spawn(ffmpegPath, args);
+      let out = "";
+      proc.stderr.on("data", (b) => (out += b));
+      proc.on("close", () => {
+        const parsed = parseList(out);
+        if (!parsed.length) {
+          console.warn(
+            `[audio] ${label} raw output yielded no devices – dumping:\n${out}`,
+          );
+        }
+        resolve(parsed);
+      });
     });
-  });
+  };
 
-  if (dshowDevices.length) {
-    console.log("[audio] DirectShow devices:", dshowDevices);
-    return [...new Set(dshowDevices)];
-  }
+  const dshow = await runEnum("dshow", [
+    "-list_devices",
+    "true",
+    "-f",
+    "dshow",
+    "-i",
+    "dummy",
+  ]);
+  const wasapi = await runEnum("wasapi", [
+    "-list_devices",
+    "true",
+    "-f",
+    "wasapi",
+    "-i",
+    "dummy",
+  ]);
 
-  // --- fallback to WASAPI enumeration (loopback friendly) ---
-  const wasapiDevices = await new Promise((resolve) => {
-    const proc = spawn(ffmpegPath, [
-      "-list_devices", "true", "-f", "wasapi", "-i", "dummy",
-    ]);
-    let out = "";
-    proc.stderr.on("data", (b) => (out += b));
-    proc.on("close", () => {
-      if (!out.trim()) console.warn("[audio] wasapi enumeration produced no output");
-      else if (!parse(out).length) {
-        console.warn("[audio] wasapi raw output (no devices parsed):\n", out);
-      }
-      resolve(parse(out));
-    });
-  });
+  const all = [...new Set([...dshow, ...wasapi])];
 
-  console.log("[audio] WASAPI devices:", wasapiDevices);
+  const micDevices = all.filter((n) => /mic|microphone/i.test(n));
+  const sysDevices = all.filter((n) =>
+    /mix|loopback|output|virtual|speaker/i.test(n),
+  );
 
-  return [...new Set(wasapiDevices)];
+  console.log(
+    "[audio] categorized devices => mic:",
+    micDevices,
+    "sys:",
+    sysDevices,
+  );
+
+  return { micDevices, sysDevices };
 }
 
 /* ───────────────────────── IPC: device discovery / selection ───────────────────────── */
 
 ipcMain.on("audio-get-devices", async (event) => {
   try {
-    const list = await listAudioDevices();
-    event.sender.send("audio-device-list", list);
+    const devs = await listAudioDevices();
+    event.sender.send("audio-device-list", devs);
   } catch (e) {
     console.error("[audio-get-devices]", e);
-    event.sender.send("audio-device-list", []);
+    event.sender.send("audio-device-list", { micDevices: [], sysDevices: [] });
   }
 });
 
 ipcMain.on("audio-set-devices", (_evt, { mic, sys }) => {
+  // prevent identical selection
+  if (mic && sys && mic === sys) {
+    console.warn(
+      "[audio-set-devices] mic and system device cannot be same; ignoring system selection",
+    );
+    sys = null;
+  }
+
   const changed = mic !== selectedMic || sys !== selectedSys;
   selectedMic = mic || null;
   selectedSys = sys || null;
@@ -211,7 +259,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
-    }
+    },
   });
 
   mainWindow.setIgnoreMouseEvents(false);
@@ -224,39 +272,33 @@ function createWindow() {
 
 async function extractText(fp) {
   console.log("Extracting text from image:", fp);
-  const res = await ocrSpace(
-    fp,
-    {
-      ocrapiKey,
-      OCREngine: "1",
-      language: "eng",
-      isOverlayRequired: false,
-      scale: true,
-      filetype: "PNG",
-      url: "https://apipro2.ocr.space/parse/image"
-    }
-  );
+  const res = await ocrSpace(fp, {
+    ocrapiKey,
+    OCREngine: "1",
+    language: "eng",
+    isOverlayRequired: false,
+    scale: true,
+    filetype: "PNG",
+    url: "https://apipro2.ocr.space/parse/image",
+  });
 
   console.log("OCR result:", res);
-  return (res?.ParsedResults || [])
-    .map(r => r.ParsedText || "")
-    .join("\n");
+  return (res?.ParsedResults || []).map((r) => r.ParsedText || "").join("\n");
 }
 
-
 const WINDOW = 120;
-let   buffer = [];
-let   merged = [];
+let buffer = [];
+let merged = [];
 
 function mergeSliceText(sliceText) {
-  sliceText.split(/\r?\n/).forEach(raw => {
+  sliceText.split(/\r?\n/).forEach((raw) => {
     const line = raw.trimEnd();
-    if (buffer.includes(line))  return;
+    if (buffer.includes(line)) return;
 
     merged.push(line);
     buffer.push(line);
     if (buffer.length > WINDOW) buffer.shift();
-    if (merged.length > 3000)    merged.shift();
+    if (merged.length > 3000) merged.shift();
   });
 }
 
@@ -288,7 +330,7 @@ function registerShortcuts() {
   globalShortcut.register("Control+Left", () => moveWindow(-30, 0));
   globalShortcut.register("Control+Right", () => moveWindow(30, 0));
 
-  let isClickThrough = false
+  let isClickThrough = false;
 
   globalShortcut.register("Insert", () => {
     if (!mainWindow) return;
@@ -350,16 +392,17 @@ function registerShortcuts() {
   globalShortcut.register("F5", async () => {
     if (!audioWin) {
       if (!mainWindow) return;
-  
+
       const mainBounds = mainWindow.getBounds();
       const margin = 10;
-  
+
       const audioWidth = 500;
       const audioHeight = 600;
-  
+
       const x = mainBounds.x - audioWidth - margin;
-      const y = mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
-  
+      const y =
+        mainBounds.y + Math.floor((mainBounds.height - audioHeight) / 2);
+
       audioWin = new BrowserWindow({
         width: audioWidth,
         height: audioHeight,
@@ -406,7 +449,7 @@ function registerShortcuts() {
 
       const mainBounds = mainWindow.getBounds();
       const margin = 10;
-      const width  = 750;
+      const width = 750;
       const height = 650;
       const x = mainBounds.x + mainBounds.width + margin;
       const y = mainBounds.y;
@@ -416,7 +459,7 @@ function registerShortcuts() {
         height,
         x,
         y,
-        frame: false,              // frameless for clean look
+        frame: false, // frameless for clean look
         alwaysOnTop: true,
         skipTaskbar: true,
         resizable: true,
@@ -424,7 +467,7 @@ function registerShortcuts() {
         hasShadow: true,
         webPreferences: {
           contextIsolation: true,
-          preload: path.join(__dirname, 'docPreload.js'),
+          preload: path.join(__dirname, "docPreload.js"),
         },
       });
       docWin.setContentProtection(true);
@@ -446,7 +489,9 @@ function registerShortcuts() {
         docWin.webContents.insertCSS(DRAG_CSS).catch(() => {});
       });
 
-      docWin.on("closed", () => { docWin = null; });
+      docWin.on("closed", () => {
+        docWin = null;
+      });
     } else {
       const visible = docWin.isVisible();
       if (visible) {
@@ -489,15 +534,17 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
 });
 
-ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = "", uploadedFileIds }) => {
+ipcMain.on("send-to-api", async (event, { message, ocr = "" }) => {
   try {
     event.sender.send("assistant-stream-start");
 
-    const plainText = [message, ocr].filter(Boolean).join("\n\n```txt\n") + (ocr ? "\n```" : "");
+    const plainText =
+      [message, ocr].filter(Boolean).join("\n\n```txt\n") +
+      (ocr ? "\n```" : "");
     const userMsg = {
       role: "user",
       content: [{ type: "text", text: plainText || "..." }],
-      attachments: [...sessionAttachmentIds].map(id => ({
+      attachments: [...sessionAttachmentIds].map((id) => ({
         file_id: id,
         tools: [{ type: "file_search" }],
       })),
@@ -508,22 +555,24 @@ ipcMain.on("send-to-api", async (event, { message, screenshots, ocr = "", upload
 
     // 2) stream assistant reply
     let finalText = "";
-    await runAssistantStream(
-      FRONTEND_ASSISTANT_ID,
-      userMsg,
-      (token) => {
-        event.sender.send("assistant-stream-data", token);
-        finalText += token;
-      }
-    );
+    await runAssistantStream(FRONTEND_ASSISTANT_ID, userMsg, (token) => {
+      event.sender.send("assistant-stream-data", token);
+      finalText += token;
+    });
 
     console.log("[assistant] final text:", finalText);
     // 3) end-of-stream marker
     event.sender.send("assistant-stream-end");
 
     // 4) keep history if you want it
-    conversationHistory.push({ role: "user",      content: [{ type:"text", text: message }] });
-    conversationHistory.push({ role: "assistant", content: [{ type:"text", text: finalText }] });
+    conversationHistory.push({
+      role: "user",
+      content: [{ type: "text", text: message }],
+    });
+    conversationHistory.push({
+      role: "assistant",
+      content: [{ type: "text", text: finalText }],
+    });
   } catch (err) {
     console.error("OpenAI Error:", err);
     event.sender.send("assistant-stream-end");
@@ -552,31 +601,41 @@ async function startAudioPipeline(win) {
     inputs.push(makeDShow("default"));
   }
 
-  const filterArgs = inputs.length === 2
-    ? ["-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2"]
-    : [];
+  const filterArgs =
+    inputs.length === 2
+      ? [
+          "-filter_complex",
+          "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2",
+        ]
+      : [];
 
   const ffArgs = [
-    "-hide_banner", "-loglevel", "error",
+    "-hide_banner",
+    "-loglevel",
+    "error",
     ...inputs.flat(),
     ...filterArgs,
-    "-ac", "1",
-    "-ar", "16000",
-    "-sample_fmt", "s16",
-    "-f", "s16le",
-    "-"
+    "-ac",
+    "1",
+    "-ar",
+    "16000",
+    "-sample_fmt",
+    "s16",
+    "-f",
+    "s16le",
+    "-",
   ];
 
   console.log("[audio] spawning FFmpeg with args:", ffArgs.join(" "));
 
   const proc = spawn(ffmpegPath, ffArgs);
-  audioStream = proc;               // keep global ref for stop()
+  audioStream = proc; // keep global ref for stop()
 
-  proc.stderr.on("data", data => {
+  proc.stderr.on("data", (data) => {
     console.error("[ffmpeg stderr]", data.toString());
     return;
   });
-  proc.on("error", err => {
+  proc.on("error", (err) => {
     console.error("[ffmpeg spawn error]", err);
     return;
   });
@@ -587,7 +646,9 @@ async function startAudioPipeline(win) {
   });
 
   if (!proc.stdout) {
-    console.error("[audio] FFmpeg did not provide stdout – aborting audio pipeline");
+    console.error(
+      "[audio] FFmpeg did not provide stdout – aborting audio pipeline",
+    );
     stopAudioPipeline();
     return;
   }
@@ -596,20 +657,20 @@ async function startAudioPipeline(win) {
 
   aai = await aaiClient.realtime.transcriber({ sampleRate: 16000 });
 
-  let   isReady      = false;
-  const bufferQueue  = [];
+  let isReady = false;
+  const bufferQueue = [];
 
   aai.on("open", ({ sessionId }) => {
     console.log("[AssemblyAI] WebSocket open – session:", sessionId);
     isReady = true;
 
     /* Flush anything buffered while socket was opening */
-    bufferQueue.forEach(buf => aai.sendAudio(buf));
+    bufferQueue.forEach((buf) => aai.sendAudio(buf));
     bufferQueue.length = 0;
     return;
   });
 
-  aai.on("error", err => {
+  aai.on("error", (err) => {
     console.error("[AssemblyAI] error", err);
     return;
   });
@@ -620,7 +681,7 @@ async function startAudioPipeline(win) {
     return;
   });
 
-  aai.on("transcript", result => {
+  aai.on("transcript", (result) => {
     const text = result.text.trim();
     if (!text) return;
 
@@ -635,7 +696,7 @@ async function startAudioPipeline(win) {
   await aai.connect();
   console.log("[audio] WebSocket connected");
 
-  proc.stdout.on("data", chunk => {
+  proc.stdout.on("data", (chunk) => {
     if (!isReady) {
       bufferQueue.push(chunk);
     } else {
@@ -680,7 +741,7 @@ ipcMain.on("upload-file", async (event, { path: filePath, name }) => {
 
     const res = await fetch("https://api.openai.com/v1/files", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { Authorization: `Bearer ${config.OPENAI_API_KEY}` },
       body: form,
     });
     const json = await res.json();
@@ -696,22 +757,6 @@ ipcMain.on("upload-file", async (event, { path: filePath, name }) => {
 });
 
 // ---------- audio‑overlay pipeline ----------
-function waitForWav(filePath, minBytes = 8192, timeoutMs = 5000) {
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-
-    (function poll() {
-      fs.stat(filePath, (err, stats) => {
-        if (!err && stats.size >= minBytes) return resolve();
-        if (Date.now() - start > timeoutMs) {
-          return reject(new Error("No audio captured (file too small)."));
-        }
-        setTimeout(poll, 200);
-      });
-    })();
-  });
-}
-
 let audioBusy = false;
 
 ipcMain.on("audio-submit", async (_evt, question) => {
@@ -719,7 +764,10 @@ ipcMain.on("audio-submit", async (_evt, question) => {
   if (audioBusy) return;
   audioBusy = true;
 
-  if (!question) { audioBusy = false; return; }
+  if (!question) {
+    audioBusy = false;
+    return;
+  }
   audioHistory.push({ role: "user", content: question });
   console.log("[audio] submitting audio history to OpenAI…");
   audioWin.webContents.send("assistant-stream-start");
@@ -730,24 +778,26 @@ ipcMain.on("audio-submit", async (_evt, question) => {
   };
   let finalText = "";
   try {
-      await runAssistantStream(                        // ② same helper you use for screenshots
-        BEHAVIORAL_ASSISTANT_ID,
-        userMsg,
-        (token) => {                                  // ③ drip every token
-          audioWin.webContents.send("assistant-stream-data", token);
-          finalText += token;
-        }
-      );
-      audioWin.webContents.send("assistant-stream-end");   // ④ done
-      console.log("[audio] OpenAI response:", finalText);
-      audioHistory.push({ role: "assistant", content: finalText });
-    } catch (e) {
-      console.error("[audio-submit]", e);
-      audioWin.webContents.send("assistant-stream-end");
-      audioWin.webContents.send("assistant-reply", "Error generating response.");
-    } finally {
-      audioBusy = false;
-    }
+    await runAssistantStream(
+      // ② same helper you use for screenshots
+      BEHAVIORAL_ASSISTANT_ID,
+      userMsg,
+      (token) => {
+        // ③ drip every token
+        audioWin.webContents.send("assistant-stream-data", token);
+        finalText += token;
+      },
+    );
+    audioWin.webContents.send("assistant-stream-end"); // ④ done
+    console.log("[audio] OpenAI response:", finalText);
+    audioHistory.push({ role: "assistant", content: finalText });
+  } catch (e) {
+    console.error("[audio-submit]", e);
+    audioWin.webContents.send("assistant-stream-end");
+    audioWin.webContents.send("assistant-reply", "Error generating response.");
+  } finally {
+    audioBusy = false;
+  }
 });
 
 ipcMain.on("audio-clear", () => {
@@ -756,9 +806,9 @@ ipcMain.on("audio-clear", () => {
 });
 
 /* ─────────────── INITIALIZE AUDIO ASSISTANT ─────────────── */
-ipcMain.on("audio-initialize", async (event) => {
+ipcMain.on("audio-initialize", async () => {
   if (!audioWin) return;
-  if (audioBusy) return;           // share the same lock
+  if (audioBusy) return; // share the same lock
   audioBusy = true;
 
   audioWin.webContents.send("assistant-stream-start");
@@ -768,8 +818,9 @@ ipcMain.on("audio-initialize", async (event) => {
     const contextDir = path.join(__dirname, "../context");
     let pdfFiles = [];
     try {
-      pdfFiles = fs.readdirSync(contextDir)
-        .filter(f => f.toLowerCase().endsWith(".pdf"));
+      pdfFiles = fs
+        .readdirSync(contextDir)
+        .filter((f) => f.toLowerCase().endsWith(".pdf"));
     } catch (e) {
       console.error("[audio-initialize] failed to list context dir", e);
     }
@@ -788,7 +839,7 @@ ipcMain.on("audio-initialize", async (event) => {
 
         const res = await fetch("https://api.openai.com/v1/files", {
           method: "POST",
-          headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+          headers: { Authorization: `Bearer ${config.OPENAI_API_KEY}` },
           body: form,
         });
         const json = await res.json();
@@ -798,7 +849,10 @@ ipcMain.on("audio-initialize", async (event) => {
         global.__uploadedPdfIds.set(fileName, json.id);
         console.log("[audio-initialize] uploaded", fileName, "→", json.id);
       } catch (upErr) {
-        console.error(`[audio-initialize] upload failed for ${fileName}:`, upErr);
+        console.error(
+          `[audio-initialize] upload failed for ${fileName}:`,
+          upErr,
+        );
       }
     }
 
@@ -867,8 +921,8 @@ ipcMain.on("audio-initialize", async (event) => {
     Your job: Sound like Brad and answer questions like him in a interview setting.
     Now, provide a short summary for each of the attached PDFs.
     `;
-    
-    const attachmentObjs = [...sessionAttachmentIds].map(id => ({
+
+    const attachmentObjs = [...sessionAttachmentIds].map((id) => ({
       file_id: id,
       tools: [{ type: "file_search" }],
     }));
@@ -881,14 +935,10 @@ ipcMain.on("audio-initialize", async (event) => {
 
     /* ----- 3. Stream reply from assistant ----- */
     let finalText = "";
-    await runAssistantStream(
-      BEHAVIORAL_ASSISTANT_ID,
-      userMsg,
-      (token) => {
-        audioWin.webContents.send("assistant-stream-data", token);
-        finalText += token;
-      }
-    );
+    await runAssistantStream(BEHAVIORAL_ASSISTANT_ID, userMsg, (token) => {
+      audioWin.webContents.send("assistant-stream-data", token);
+      finalText += token;
+    });
 
     audioWin.webContents.send("assistant-stream-end");
     audioHistory.push({ role: "assistant", content: finalText });
@@ -911,22 +961,42 @@ function startStream(win) {
   /* ---------- 1. open websocket ---------- */
   ws = new WebSocket(
     "wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000",
-    { headers: { authorization: process.env.ASSEMBLYAI_API_KEY } }
+    { headers: { authorization: config.ASSEMBLYAI_API_KEY } },
   );
 
   ws.on("open", () => {
-    win.webContents.send("recorder:status", true);    // badge ON
+    win.webContents.send("recorder:status", true); // badge ON
     console.log("[recorder] websocket open");
 
     /* ---------- 2. spawn FFmpeg ---------- */
-    recProc = spawn(ffmpegPath, [
-      "-hide_banner", "-loglevel", "error",
-      "-f", "dshow", "-i", "audio=Stereo Mix (Realtek(R) Audio)",
-      "-f", "dshow", "-i", "audio=Microphone (NVIDIA Broadcast)",
-      "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2",
-      "-ac", "1", "-ar", "16000", "-sample_fmt", "s16",
-      "-f", "s16le", "-"          // raw 16-bit PCM to stdout
-    ], { windowsHide: true });
+    recProc = spawn(
+      ffmpegPath,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "dshow",
+        "-i",
+        "audio=Stereo Mix (Realtek(R) Audio)",
+        "-f",
+        "dshow",
+        "-i",
+        "audio=Microphone (NVIDIA Broadcast)",
+        "-filter_complex",
+        "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-sample_fmt",
+        "s16",
+        "-f",
+        "s16le",
+        "-", // raw 16-bit PCM to stdout
+      ],
+      { windowsHide: true },
+    );
 
     recProc.stderr.on("data", (b) => console.error("[ffmpeg]", b.toString()));
 
@@ -934,7 +1004,8 @@ function startStream(win) {
     let chunk = Buffer.alloc(0);
     recProc.stdout.on("data", (data) => {
       chunk = Buffer.concat([chunk, data]);
-      while (chunk.length >= 3200) {          // 100 ms of audio @16k/16-bit/mono
+      while (chunk.length >= 3200) {
+        // 100 ms of audio @16k/16-bit/mono
         if (ws && ws.readyState === 1) {
           ws.send(chunk.slice(0, 3200));
         }
@@ -959,9 +1030,7 @@ function startStream(win) {
       case "FinalTranscript": {
         // prefer the punctuated version if AssemblyAI provides it
         const final =
-          (data.punctuated && data.punctuated.transcript) ||
-          data.text ||
-          "";
+          (data.punctuated && data.punctuated.transcript) || data.text || "";
         console.log("[WS final]", final);
         mainWindow.webContents.send("recorder:final", final);
         break;
@@ -977,7 +1046,6 @@ function startStream(win) {
     }
   });
 
-
   ws.on("close", () => stopStream(win));
   ws.on("error", (err) => {
     console.error("WS error", err);
@@ -987,11 +1055,17 @@ function startStream(win) {
 }
 
 function stopStream(win) {
-  if (recProc) { recProc.kill("SIGINT"); recProc = null; }
-  if (ws)      { ws.close(); ws = null; }
+  if (recProc) {
+    recProc.kill("SIGINT");
+    recProc = null;
+  }
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
 
-  win.webContents.send("recorder:status", false);     // badge OFF
-  win.webContents.send("recorder:partial", "");       // clear trailing partial
+  win.webContents.send("recorder:status", false); // badge OFF
+  win.webContents.send("recorder:partial", ""); // clear trailing partial
   console.log("[recorder] stopped");
 }
 
@@ -1047,7 +1121,8 @@ ipcMain.on("win-resize", (event, { edge, dx, dy }) => {
       return;
   }
 
-  const minW = 300, minH = 200;
+  const minW = 300,
+    minH = 200;
   if (bounds.width < minW) bounds.width = minW;
   if (bounds.height < minH) bounds.height = minH;
 
