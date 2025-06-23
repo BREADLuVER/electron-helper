@@ -154,7 +154,7 @@
     sysSel.addEventListener('change', sendDeviceSelection);
     micSel.addEventListener('change', sendDeviceSelection);
 
-    ipc.on('audio-device-list', ({ micDevices, sysDevices }) => {
+    ipc.on('audio-device-list', ({ micDevices, sysDevices, selectedMic, selectedSys }) => {
       populateSelect(micSel, micDevices);
       populateSelect(sysSel, sysDevices);
 
@@ -163,6 +163,15 @@
         sysSel.value = '';
       }
 
+      // Apply saved selections if valid
+      if (selectedMic && micDevices.includes(selectedMic)) {
+        micSel.value = selectedMic;
+      }
+      if (selectedSys && sysDevices.includes(selectedSys)) {
+        sysSel.value = selectedSys;
+      }
+
+      // Fallback: select first mic if none chosen
       if (!micSel.value && micDevices.length) micSel.value = micDevices[0];
       sendDeviceSelection();
     });

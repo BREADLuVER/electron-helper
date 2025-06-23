@@ -10,7 +10,7 @@ import fs from "fs";
 import os from "os";
 import { pathToFileURL } from "url";
 import { fileURLToPath } from "url";
-import { config } from "./config.js";
+import { config, saveConfig } from "./config.js";
 import fetch from "node-fetch";
 import { FormData } from "formdata-node";
 import { fileFromPath } from "formdata-node/file-from-path";
@@ -130,9 +130,9 @@ let audioVisible = false;
 let recProc = null;
 let ws = null;
 
-// User-selected device names (populated via renderer dropdown)
-let selectedMic = null; // string | null
-let selectedSys = null; // string | null (loop-back / system audio)
+// Preload saved preferences if present
+let selectedMic = config.preferredMic || null; // string | null
+let selectedSys = config.preferredSys || null; // string | null (loop-back)
 
 /* ──────────────────────────────────────────────────────────────── */
 // Utility – enumerate audio capture devices using FFmpeg
@@ -209,10 +209,19 @@ async function listAudioDevices() {
 ipcMain.on("audio-get-devices", async (event) => {
   try {
     const devs = await listAudioDevices();
-    event.sender.send("audio-device-list", devs);
+    event.sender.send("audio-device-list", {
+      ...devs,
+      selectedMic,
+      selectedSys,
+    });
   } catch (e) {
     console.error("[audio-get-devices]", e);
-    event.sender.send("audio-device-list", { micDevices: [], sysDevices: [] });
+    event.sender.send("audio-device-list", {
+      micDevices: [],
+      sysDevices: [],
+      selectedMic: null,
+      selectedSys: null,
+    });
   }
 });
 
@@ -228,6 +237,11 @@ ipcMain.on("audio-set-devices", (_evt, { mic, sys }) => {
   const changed = mic !== selectedMic || sys !== selectedSys;
   selectedMic = mic || null;
   selectedSys = sys || null;
+
+  if (changed) {
+    // Persist new preferences
+    saveConfig({ preferredMic: selectedMic, preferredSys: selectedSys });
+  }
 
   if (changed && audioStream && audioWin) {
     console.log("[audio] device change detected – restarting pipeline…");
@@ -590,7 +604,14 @@ async function startAudioPipeline(win) {
   // Build dynamic FFmpeg args based on user-selected devices
   const inputs = [];
 
-  const makeDShow = (name) => ["-f", "dshow", "-i", `audio=${name}`];
+  const makeDShow = (name) => [
+    "-f",
+    "dshow",
+    "-rtbufsize",
+    "20M",
+    "-i",
+    `audio=${name}`,
+  ];
 
   if (selectedSys) inputs.push(makeDShow(selectedSys));
   if (selectedMic) inputs.push(makeDShow(selectedMic));
@@ -977,10 +998,14 @@ function startStream(win) {
         "error",
         "-f",
         "dshow",
+        "-rtbufsize",
+        "20M",
         "-i",
         "audio=Stereo Mix (Realtek(R) Audio)",
         "-f",
         "dshow",
+        "-rtbufsize",
+        "20M",
         "-i",
         "audio=Microphone (NVIDIA Broadcast)",
         "-filter_complex",
