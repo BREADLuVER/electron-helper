@@ -1,4 +1,11 @@
-import { app, BrowserWindow, globalShortcut, ipcMain } from "electron";
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  session,
+  desktopCapturer,
+} from "electron";
 import path from "path";
 import { screen } from "electron";
 import screenshot from "screenshot-desktop";
@@ -111,6 +118,9 @@ The key metrics we tracked were Core Web Vitals — especially First Contentful 
 I also worked with marketing to set up dynamic Open Graph tags and ensured proper semantic HTML so our legal pages would render well on mobile and social platforms.";
 `;
 const sessionAttachmentIds = new Set();
+
+// ───────────────────────── Share-screen recorder popup ─────────────────────────
+let recorderWin = null;
 
 let mainWindow = null;
 let isVisible = true;
@@ -1002,14 +1012,6 @@ function startStream(win) {
         "20M",
         "-i",
         "audio=Stereo Mix (Realtek(R) Audio)",
-        "-f",
-        "dshow",
-        "-rtbufsize",
-        "20M",
-        "-i",
-        "audio=Microphone (NVIDIA Broadcast)",
-        "-filter_complex",
-        "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2",
         "-ac",
         "1",
         "-ar",
@@ -1097,6 +1099,52 @@ function stopStream(win) {
 export { startAudioPipeline, stopAudioPipeline };
 
 // ────────────────────────────────────────────────────────────
+// Screen-recorder helpers – save WebM file & provide AssemblyAI token
+
+ipcMain.handle("save-recording", async (_evt, { buffer, ext = "webm" }) => {
+  try {
+    if (!buffer || buffer.byteLength === 0) {
+      throw new Error("Empty recording buffer");
+    }
+
+    const dir = path.join(app.getPath("videos"), "PrepDock");
+    fs.mkdirSync(dir, { recursive: true });
+
+    const filePath = path.join(dir, `recording-${Date.now()}.${ext}`);
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+
+    return { success: true, filePath };
+  } catch (e) {
+    console.error("[save-recording]", e);
+    return { success: false, error: e.message };
+  }
+});
+
+// Browser cannot attach custom headers for WS handshake, so we provide a short-lived
+// AssemblyAI realtime token that can be embedded in the ws URL query string.
+ipcMain.handle("aai-get-realtime-token", async () => {
+  try {
+    const res = await fetch("https://api.assemblyai.com/v2/realtime/token", {
+      method: "POST",
+      headers: {
+        Authorization: config.ASSEMBLYAI_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ expires_in: 3600 }), // 1-hour token
+    });
+
+    if (!res.ok) {
+      throw new Error(`Token request failed – ${res.status} ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    return { success: true, token: data.token };
+  } catch (err) {
+    console.error("[aai-get-realtime-token]", err);
+    return { success: false, error: err.message };
+  }
+});
+
 // Helpers to rebuild OCR text after a screenshot is removed
 function rebuildMerged() {
   buffer = [];
@@ -1152,4 +1200,87 @@ ipcMain.on("win-resize", (event, { edge, dx, dy }) => {
   if (bounds.height < minH) bounds.height = minH;
 
   win.setBounds(bounds);
+});
+
+/* ─────────────────────────── screen-capture permissions ─────────────────────────── */
+app.whenReady().then(() => {
+  const ses = session.defaultSession;
+
+  // 1) Automatically grant getUserMedia / getDisplayMedia requests from our app
+  ses.setPermissionRequestHandler((wc, permission, callback) => {
+    // Allow microphone, camera, display capture without prompting
+    if (
+      ["media", "display-capture", "camera", "microphone"].includes(permission)
+    ) {
+      return callback(true);
+    }
+    return callback(false);
+  });
+
+  // 2) Some Chromium internals call the lightweight check version first – approve it too
+  ses.setPermissionCheckHandler((_wc, permission) => {
+    return ["media", "display-capture", "camera", "microphone"].includes(
+      permission,
+    );
+  });
+
+  /* ---- Provide stream sources for getDisplayMedia ---- */
+  ses.setDisplayMediaRequestHandler(
+    (request, callback) => {
+      // Prefer system picker where available; if not, fall back to first screen
+      desktopCapturer
+        .getSources({ types: ["screen"], fetchWindowIcons: false })
+        .then((sources) => {
+          if (sources.length === 0) return callback(false);
+
+          // If audio was requested and we are on Windows, grant loopback; else omit
+          const grant = { video: sources[0] };
+          if (process.platform === "win32" && request.audioRequested) {
+            grant.audio = "loopback";
+          }
+
+          callback(grant);
+        })
+        .catch(() => callback(false));
+    },
+    { useSystemPicker: true },
+  );
+});
+
+ipcMain.handle("open-recorder-popup", () => {
+  if (recorderWin) {
+    recorderWin.focus();
+    return;
+  }
+
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const winWidth = 280;
+  const winHeight = 420;
+  const x = width - winWidth - 40; // near bottom-right
+  const y = height - winHeight - 100;
+
+  recorderWin = new BrowserWindow({
+    width: winWidth,
+    height: winHeight,
+    x,
+    y,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  recorderWin.setContentProtection(true);
+  recorderWin.loadFile(path.join(__dirname, "../recorder.html"));
+
+  recorderWin.on("closed", () => {
+    recorderWin = null;
+  });
 });

@@ -28,6 +28,9 @@ const VALID_CHANNELS = [
   "audio-get-devices",
   "audio-device-list",
   "audio-set-devices",
+  "save-recording",
+  "aai-get-realtime-token",
+  "open-recorder-popup",
 ];
 electron_1.contextBridge.exposeInMainWorld("ipcRenderer", {
   send(channel, data) {

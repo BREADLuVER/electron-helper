@@ -121,7 +121,6 @@
     <button id="init-btn">Initialize</button>
     <button id="clear-btn">Clear</button>
     <button id="clear-all-btn">Clear All</button>
-    <select id="sys-select" title="System / Loop-back"></select>
     <select id="mic-select" title="Microphone"></select>
   </div>
 
@@ -129,14 +128,13 @@
     const ipc = window.ipcRenderer;
 
     /* ---------- Device selection ---------- */
-    const sysSel = document.getElementById('sys-select');
     const micSel = document.getElementById('mic-select');
 
     function populateSelect(sel, devices) {
       sel.innerHTML = '';
       const noneOpt = document.createElement('option');
       noneOpt.value = '';
-      noneOpt.textContent = sel === sysSel ? '--No system audio--' : '--No mic--';
+      noneOpt.textContent = '--No mic--';
       sel.appendChild(noneOpt);
 
       devices.forEach((d) => {
@@ -148,27 +146,17 @@
     }
 
     function sendDeviceSelection() {
-      ipc.send('audio-set-devices', { sys: sysSel.value, mic: micSel.value });
+      ipc.send('audio-set-devices', { mic: micSel.value });
     }
 
-    sysSel.addEventListener('change', sendDeviceSelection);
     micSel.addEventListener('change', sendDeviceSelection);
 
-    ipc.on('audio-device-list', ({ micDevices, sysDevices, selectedMic, selectedSys }) => {
+    ipc.on('audio-device-list', ({ micDevices, selectedMic }) => {
       populateSelect(micSel, micDevices);
-      populateSelect(sysSel, sysDevices);
-
-      // Ensure same device isn't selected in both dropdowns
-      if (sysSel.value && sysSel.value === micSel.value) {
-        sysSel.value = '';
-      }
 
       // Apply saved selections if valid
       if (selectedMic && micDevices.includes(selectedMic)) {
         micSel.value = selectedMic;
-      }
-      if (selectedSys && sysDevices.includes(selectedSys)) {
-        sysSel.value = selectedSys;
       }
 
       // Fallback: select first mic if none chosen
