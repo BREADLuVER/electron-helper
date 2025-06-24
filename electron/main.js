@@ -510,7 +510,9 @@ function registerShortcuts() {
         }
       `;
       docWin.webContents.on("did-finish-load", () => {
-        docWin.webContents.insertCSS(DRAG_CSS).catch(() => {});
+        docWin.webContents
+          .insertCSS(DRAG_CSS)
+          .catch((cssErr) => console.warn("[docWin] insertCSS failed", cssErr));
       });
 
       docWin.on("closed", () => {
@@ -624,11 +626,35 @@ async function startAudioPipeline(win) {
   ];
 
   if (selectedSys) inputs.push(makeDShow(selectedSys));
-  if (selectedMic) inputs.push(makeDShow(selectedMic));
+  if (selectedMic) {
+    inputs.push(makeDShow(selectedMic));
+    saveConfig({ preferredMic: selectedMic, preferredSys: selectedSys });
+  }
 
-  // Fallback: pick first available mic if none chosen
+  // Robust fallback: if nothing selected yet (e.g., first run on new PC),
+  // query available devices and auto-select the first microphone so that
+  // FFmpeg never receives the fragile "audio=default" pseudo-device.
   if (inputs.length === 0) {
-    console.warn("[audio] no devices selected – attempting default device");
+    try {
+      const { micDevices } = await listAudioDevices();
+      if (micDevices.length) {
+        selectedMic = micDevices[0];
+        console.warn(
+          `[audio] selected first detected mic: "${selectedMic}" as fallback`,
+        );
+        inputs.push(makeDShow(selectedMic));
+
+        // persist so future sessions remember
+        saveConfig({ preferredMic: selectedMic, preferredSys: selectedSys });
+      }
+    } catch (err) {
+      console.error("[audio] device enumeration failed", err);
+    }
+  }
+
+  // Ultimate fallback: still nothing? give default (may or may not exist)
+  if (inputs.length === 0) {
+    console.warn("[audio] no detectable devices – falling back to 'default'");
     inputs.push(makeDShow("default"));
   }
 
