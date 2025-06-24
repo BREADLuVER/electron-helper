@@ -159,8 +159,7 @@
         micSel.value = selectedMic;
       }
 
-      // Fallback: select first mic if none chosen
-      if (!micSel.value && micDevices.length) micSel.value = micDevices[0];
+      // Keep user selection (including "--No mic--") as-is
       sendDeviceSelection();
     });
 

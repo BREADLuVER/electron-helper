@@ -1,3 +1,4 @@
+import "dotenv/config";
 import {
   app,
   BrowserWindow,
@@ -510,9 +511,7 @@ function registerShortcuts() {
         }
       `;
       docWin.webContents.on("did-finish-load", () => {
-        docWin.webContents
-          .insertCSS(DRAG_CSS)
-          .catch((cssErr) => console.warn("[docWin] insertCSS failed", cssErr));
+        docWin.webContents.insertCSS(DRAG_CSS).catch(() => {});
       });
 
       docWin.on("closed", () => {
@@ -626,36 +625,12 @@ async function startAudioPipeline(win) {
   ];
 
   if (selectedSys) inputs.push(makeDShow(selectedSys));
-  if (selectedMic) {
-    inputs.push(makeDShow(selectedMic));
-    saveConfig({ preferredMic: selectedMic, preferredSys: selectedSys });
-  }
+  if (selectedMic) inputs.push(makeDShow(selectedMic));
 
-  // Robust fallback: if nothing selected yet (e.g., first run on new PC),
-  // query available devices and auto-select the first microphone so that
-  // FFmpeg never receives the fragile "audio=default" pseudo-device.
+  // If user explicitly chose no devices, abort pipeline
   if (inputs.length === 0) {
-    try {
-      const { micDevices } = await listAudioDevices();
-      if (micDevices.length) {
-        selectedMic = micDevices[0];
-        console.warn(
-          `[audio] selected first detected mic: "${selectedMic}" as fallback`,
-        );
-        inputs.push(makeDShow(selectedMic));
-
-        // persist so future sessions remember
-        saveConfig({ preferredMic: selectedMic, preferredSys: selectedSys });
-      }
-    } catch (err) {
-      console.error("[audio] device enumeration failed", err);
-    }
-  }
-
-  // Ultimate fallback: still nothing? give default (may or may not exist)
-  if (inputs.length === 0) {
-    console.warn("[audio] no detectable devices – falling back to 'default'");
-    inputs.push(makeDShow("default"));
+    console.warn("[audio] no audio devices selected – skipping audio pipeline");
+    return;
   }
 
   const filterArgs =
@@ -768,10 +743,37 @@ async function startAudioPipeline(win) {
 }
 
 function stopAudioPipeline() {
-  audioStream?.kill("SIGKILL");
+  // Guard against partially-initialized FFmpeg process
+  try {
+    audioStream?.kill("SIGKILL");
+  } catch (_) {
+    /* ignored */
+  }
   audioStream = null;
-  aai?.close();
-  aai = null;
+
+  // Gracefully tear down AssemblyAI socket.
+  if (aai) {
+    try {
+      const sock = aai.socket;
+      if (sock) {
+        const { CONNECTING, OPEN } = sock;
+        if (sock.readyState === OPEN) {
+          // Normal path – use library helper
+          const p = aai.close(false /* don't wait */);
+          if (p && typeof p.then === "function") p.catch(() => {});
+        } else if (sock.readyState === CONNECTING) {
+          // Socket not yet open – terminate directly to avoid ws crash
+          sock.terminate?.();
+        } else {
+          // CLOSING or CLOSED – safe to ignore
+        }
+      }
+    } catch (closeErr) {
+      console.warn("[audio] AssemblyAI socket cleanup failed", closeErr);
+    } finally {
+      aai = null;
+    }
+  }
 }
 
 function wrapQuestion(raw) {
@@ -1274,8 +1276,9 @@ app.whenReady().then(() => {
 });
 
 ipcMain.handle("open-recorder-popup", () => {
-  if (recorderWin) {
-    recorderWin.focus();
+  // Toggle behaviour: if window exists, close it; else create a new one
+  if (recorderWin && !recorderWin.isDestroyed()) {
+    recorderWin.close();
     return;
   }
 
