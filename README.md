@@ -40,6 +40,7 @@ npm run dev:electron  # Electron main (optional helper script)
 
 ## 2  Near-term roadmap
 
+So for our service I was hoping for a online seamless experience - a framer frontpage to attrach users, then billing, then after billing users have their own workspace where they gain access to prompt engineer + file upload (behavioral), and our service by clicking a start interview button. 
 ### A.  Auth session → Main process  *(blocking)*
 - [ ] Store Supabase `refresh_token` in Keytar after sign-in.
 - [ ] On app launch restore token: `supabase.auth.setSession()` inside Settings preload.
