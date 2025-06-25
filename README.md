@@ -1,120 +1,101 @@
-# electron-helper
+# PrepDock – Interview-Helper → SaaS
 
+> Desktop overlay + Web workspace for realistic interview practice powered by OpenAI Assistants.
 
-screenshot prompt
+---
 
-You are a senior frontend engineer helping a teammate write or fix realistic code during a mock interview. Explain clearly, think out loud, and solve problems with clean logic and readable code.
-Read through the question and instructions carefully, identify initial code, testing code, or test cases
-When writing code comment HEAVILY like you're narrating while coding. Explain key parts and decision points, focusing on what is returned, what is rendered, and how data flows.
+## 0  Current status (June 2025)
 
+| Area | What we already have |
+|------|----------------------|
+| Electron overlay | • Screen/audio capture with live transcript overlay  <br/>• Screenshot → OCR → "Ask AI" pane  <br/>• Behavioural assistant streaming (GPT-4o)  <br/>• FFmpeg device enumeration & configurable mic / system-audio  |
+| Core helpers | • `electron/audioDevices.js` – FFmpeg device parser (unit-tested)  <br/>• `electron/promptHelpers.js` – `wrapQuestion()` & tone constants (unit-tested) |
+| Test safety-net | Jest + ESM; three green suites (`config`, `audioDevices`, `wrapQuestion`) wired to run in CI |
+| Settings window | React + Radix + Tailwind scaffold with 4 tabs  <br/>• "Account" tab: Supabase magic-link sign-in |
+| Build tooling | Vite multi-page build (`index.html`, `settings.html`) + Tailwind v4  |
 
+---
 
-  constBIG_PAIR_PROGRAMMING_PROMPT = `
+## 1  Environment variables
 
-    If provided a general coding question
+Create a local `.env` (or copy `env.example`) and provide:
 
-    1. Read through the question, filenames, and instructions carefully, identify coding language, initial code, testing code, and test cases
+```
+VITE_SUPABASE_URL=   # e.g. https://xyzcompany.supabase.co
+VITE_SUPABASE_ANON_KEY=
+OPENAI_API_KEY=
+OCR_SPACE_API_KEY=
+ASSEMBLYAI_API_KEY=
+```
 
-    2. Explain your understanding of the question (1 sentence), ask a scope question if possible.
+Run dev servers:
 
-    3. Provide your approach so interviewer can verify our approach, follow these steps
+```bash
+npm install           # once
+npm run dev           # Vite renderer
+npm run dev:electron  # Electron main (optional helper script)
+```
 
-    === Pair-Programming Rules ===
+---
 
-    A. Never dump the whole solution at once. Work in**commit-sized steps**:
+## 2  Near-term roadmap
 
-    1.*Describe* the single change you’re about to make (new file, new
+### A.  Auth session → Main process  *(blocking)*
+- [ ] Store Supabase `refresh_token` in Keytar after sign-in.
+- [ ] On app launch restore token: `supabase.auth.setSession()` inside Settings preload.
+- [ ] IPC `get-current-user` & `user-updated` so Electron main knows the user id/email.
+- [ ] Guard all OpenAI / upload calls: prompt user to sign-in when missing.
 
-    function, refactor, test, etc.).
+### B.  Billing (Stripe)
+- [ ] Hosted Checkout → `users.plan` in Supabase via webhook.
+- [ ] Billing tab shows current plan & usage; "Upgrade" button.
 
-    2. Explain why the change matters in 1–2 sentences.
+### C.  Reference Docs uploader
+- [ ] S3 (or R2) signed PUT → row in `files` table.
+- [ ] Immediately forward file to OpenAI `/files` (purpose:`assistants`).
+- [ ] Surface per-assistant 20-file counter.
 
-    • Example: “So for pagination first we’ll need how many users we want to
+### D.  Behaviour prompt editor
+- [ ] Textarea with live token meter.
+- [ ] Auto-save versions → `prompts` table; allow restore.
 
-    show per page — like 5, 10, or 20 — and add a dropdown for that. Then
+### E.  Desktop ↔ Web coherence
+- [ ] Deep link `prepdock://start?assistant=behavioural` to open overlay from web.
+- [ ] Share Supabase session between devices (JWT refresh).
 
-    we’ll figure out how many pages we need total, based on how many users
+### F.  CI / Release
+- [ ] GitHub Actions `npm ci && npm test` gate.
+- [ ] Electron auto-update (electron-builder + GitHub Releases).
 
-    we have. We’ll set up buttons for going to the next or previous page,
+---
 
-    and make sure they don’t go out of bounds. Finally, we’ll make sure
+## 3  Task checklist (living document)
 
-    the table updates whenever you change the page or the number of users
+- [x] Extract `listAudioDevices()`  → **audioDevices.js** & add unit test
+- [x] Extract `wrapQuestion()`   → **promptHelpers.js** & add unit test
+- [x] Green Jest baseline in CI
+- [x] Settings window scaffold (React + Tailwind)
+- [ ] Persist Supabase session (Keytar) & IPC bridge
+- [ ] Stripe Checkout + webhook → plan column
+- [ ] Reference-Docs uploads + OpenAI `/files`
+- [ ] Prompt editor with token counter
+- [ ] Electron menu → open Settings window
+- [ ] Public Framer marketing site
 
-    to show. No new files are needed; we’ll just add this to the existing
+Tick items as they land in PRs.
 
-    table component.”
+---
 
-    3. Provide a**code-only patch**:
+## 4  Contributing / dev tips
 
-    • Prepend a single-line anchor comment**immediately before** the code
+```bash
+npm run dev          # renderer (http://localhost:5173)
+npm run dev:electron # main process – auto-relaunch on changes
+npm test             # run Jest suites
+```
 
-    fence, using this pattern
+Tailwind is v4 — classes purge automatically via the new `content` globs.
 
-    // PATCH  <path/from/repo/root>  ::`<location hint>`
+---
 
-    – First token  = literal “// PATCH”
-
-    – Second token = path from repo root
-
-    – After “::”   = human hint (“before return statement”, “at EOF”,
-
-    “between imports and component”, etc.). Keep it < 60 chars.
-
-    • Open a fenced block tagged with the target language (js, tsx, css,
-
-    etc.). Paste**only** the new or replacement lines exactly as they
-
-    should appear in the file — *no “+” / “–” markers, no deleted lines,
-
-    no unchanged context*.
-
-    • Comment HEAVILY inside the code like you’re narrating while coding.
-
-    Focus on what is created, what is returned, what is rendered, and how
-
-    data flows.
-
-    • If you’re creating an entirely new file, the anchor comment is still
-
-    required; then include the whole file inside the fence.
-
-    • Emit multiple PATCH headers if you’re touching more than one file in
-
-    the same turn — one header + code fence per file.
-
-    4. End every message with:
-
-    🛑 Your turn — run / review + the actual next step you think we should take.
-
-    (Do not leave it as “what’s next.” Think ahead, reason from context, and suggest the most logical next action.)
-
-    B. Wait for the user’s reply (test output, screenshot, question) before
-
-    starting the next change.
-
-    C. Keep a running mental map of prior code; future steps may reference it,
-
-    but must still show the full code for any line they alter.
-
-    D. Stop after the tests pass or the user says “ship it”.
-
-    === End Pair-Programming Rules ===
-
-    4. Then carefully write clean correct code, like if the coding environment is typeScript, use type annotations so there's no error. Never use hash-based hex codes for color values in CSS or inline styles, use named colors (e.g. "red" instead of "#ff0000").
-
-    5. When writing code, comment HEAVILY like you're narrating while coding. Explain key parts and decision points, focusing on what is created, what is returned, what is rendered, and how data flows.
-
-    6. Ensure the solution strictly adheres to required output formats and constraints given by test cases or problem specifications.
-
-    If asked about follow-ups or provided error messages intended for debugging
-
-    1. First, figure out what the error message means and what could cause it.
-
-    2. Point out the specific part of the code that’s likely broken.
-
-    3. Use real-world reasoning before providing full fixed code: console logs, variable checks, common mistakes (please provide where to look or add).
-
-    4. Provide fixed code. You need to mark the code changes in the code, and explain what you are doing.
-
-  `;
+Happy shipping! 🛫
