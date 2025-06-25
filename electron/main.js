@@ -147,7 +147,7 @@ let selectedSys = config.preferredSys || null; // string | null (loop-back)
 
 /* ──────────────────────────────────────────────────────────────── */
 // Utility – enumerate audio capture devices using FFmpeg
-async function listAudioDevices() {
+export async function listAudioDevices() {
   if (process.platform !== "win32") {
     // TODO: macOS/Linux enumeration later
     return { micDevices: [], sysDevices: [] };
