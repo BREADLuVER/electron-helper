@@ -1,25 +1,59 @@
 {
-  "name": "invisible-overlay",
+  "name": "prepdock",
   "version": "1.0.0",
+  "description": "PrepDock desktop + web workspace",
   "main": "electron/main.js",
   "type": "module",
+  "productName": "PrepDock",
+  "author": "PrepDock Inc.",
+  "build": {
+    "appId": "com.prepdock.app",
+    "asar": true,
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "electron/**",
+      "resources/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
   "scripts": {
     "dev": "vite",
-    "start": "vite build && electron electron/main.js"
+    "dev:electron": "electron electron/main.js",
+    "dev:all": "concurrently --raw -k \"npm:dev\" \"npm:dev:electron\"",
+    "build:renderer": "vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "type-check": "tsc --noEmit",
+    "build": "npm run build:renderer && electron-builder --dir",
+    "dist": "npm run build:renderer && electron-builder --win --x64",
+    "start": "npm run build:renderer && electron electron/main.js",
+    "preview": "vite preview",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "dependencies": {
+    "@radix-ui/react-tabs": "^1.1.12",
+    "@supabase/supabase-js": "^2.39.1",
     "assemblyai": "^4.9.0",
     "child_process": "^1.0.2",
     "dotenv": "^16.5.0",
-    "electron": "^29.1.4",
     "form-data": "^4.0.2",
     "formdata-node": "^6.0.3",
-    "invisible-overlay": "file:",
     "marked": "^15.0.8",
     "node-fetch": "^3.3.2",
     "ocr-space-api-wrapper": "^2.3.2",
     "open": "^10.1.2",
     "openai": "^4.95.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "screenshot-desktop": "^1.15.1",
     "sharp": "^0.34.1",
     "vite": "^6.2.5",
@@ -27,9 +61,39 @@
     "ws": "^8.18.2"
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.27.2",
+    "@babel/preset-typescript": "^7.27.1",
+    "@tailwindcss/postcss": "^4.1.10",
     "@types/node": "^22.14.1",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
     "@types/screenshot-desktop": "^1.12.3",
+    "@typescript-eslint/eslint-plugin": "^7.10.0",
+    "@typescript-eslint/parser": "^7.10.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.21",
+    "babel-jest": "^30.0.2",
+    "concurrently": "^8.2.2",
+    "electron-builder": "^26.0.12",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "husky": "^9.0.0",
+    "jest": "^30.0.3",
+    "lint-staged": "^15.2.0",
+    "postcss": "^8.5.6",
+    "prettier": "^3.2.5",
+    "tailwindcss": "^4.1.10",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "@electron/remote": "^2.1.2",
+    "electron": "^29.1.4"
+  },
+  "prepare": "husky install",
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   }
 }

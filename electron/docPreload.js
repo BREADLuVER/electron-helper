@@ -1,13 +1,13 @@
-// expose ipc and inject resize handle
-const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  send: (ch, data) => ipcRenderer.send(ch, data)
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const electron_1 = require("electron");
+// Expose ipc for send only (no receive needed inside doc window)
+electron_1.contextBridge.exposeInMainWorld("ipcRenderer", {
+  send: (channel, data) => electron_1.ipcRenderer.send(channel, data),
 });
-
-window.addEventListener('DOMContentLoaded', () => {
-  // inject CSS for drag bar and resize handle
-  const style = document.createElement('style');
+window.addEventListener("DOMContentLoaded", () => {
+  // Inject CSS for drag bar & resize handle
+  const style = document.createElement("style");
   style.textContent = `
     body::before {
       content: '';
@@ -28,26 +28,28 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   `;
   document.head.appendChild(style);
-
-  const handle = document.createElement('div');
-  handle.id = 'doc-resize-handle';
+  const handle = document.createElement("div");
+  handle.id = "doc-resize-handle";
   document.body.appendChild(handle);
-
-  let startX=0, startY=0;
-  handle.addEventListener('mousedown', (e)=>{
+  let startX = 0,
+    startY = 0;
+  handle.addEventListener("mousedown", (e) => {
     e.preventDefault();
-    startX=e.screenX; startY=e.screenY;
-    function onMove(ev){
-      const dx=ev.screenX-startX; const dy=ev.screenY-startY;
-      if(dx===0 && dy===0) return;
-      ipcRenderer.send('win-resize', { edge:'corner', dx, dy });
-      startX=ev.screenX; startY=ev.screenY;
+    startX = e.screenX;
+    startY = e.screenY;
+    function onMove(ev) {
+      const dx = ev.screenX - startX;
+      const dy = ev.screenY - startY;
+      if (dx === 0 && dy === 0) return;
+      electron_1.ipcRenderer.send("win-resize", { edge: "corner", dx, dy });
+      startX = ev.screenX;
+      startY = ev.screenY;
     }
-    function onUp(){
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
     }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   });
-}); 
+});

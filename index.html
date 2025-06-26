@@ -203,6 +203,7 @@
       const userArea  = document.getElementById("user-message");
       let baseText   = "";   // stable text that existed before recording
       let lastPartial = "";
+      let recBtn; // will point to the Screen Rec button later
       
       window.addEventListener("keydown", (e) => {
         if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "r") {
@@ -460,6 +461,26 @@
           window.addEventListener('mouseup',onUp);
         });
       })();
+
+      /* ---------- Open share-screen settings popup ---------- */
+      const openRecBtn = document.createElement('button');
+      openRecBtn.textContent = 'Screen Rec';
+      recBtn = openRecBtn; // assign for recorder status toggle
+      openRecBtn.style.position = 'fixed';
+      openRecBtn.style.bottom = '38px';
+      openRecBtn.style.right = '12px';
+      openRecBtn.style.zIndex = '1000';
+      openRecBtn.style.fontSize = '11px';
+      openRecBtn.style.padding = '4px 8px';
+      openRecBtn.style.background = '#444';
+      openRecBtn.style.color = '#eee';
+      openRecBtn.style.border = '1px solid #666';
+      openRecBtn.style.borderRadius = '4px';
+      document.body.appendChild(openRecBtn);
+
+      openRecBtn.addEventListener('click', () => {
+        window.ipcRenderer.invoke('open-recorder-popup');
+      });
     </script>
   </body>
 </html>

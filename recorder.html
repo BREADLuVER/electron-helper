@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Screen Recorder</title>
+    <style>
+      html,body{margin:0;padding:8px;font:12px sans-serif;background:rgba(0,0,0,0.6);color:#eee;}
+      select,button{font-size:11px;padding:4px 6px;background:#333;border:1px solid #666;color:#eee;border-radius:3px;margin:2px 0;width:100%;box-sizing:border-box;}
+      #preview{width:100%;max-height:140px;border:1px solid #555;margin-top:6px;background:#000;}
+      #note{font-size:10px;color:#ccc;margin-top:6px;text-align:center;}
+      .controls{display:flex;gap:4px;margin-top:6px;}
+      .controls button{flex:1;}
+      /* drag */
+      .drag-bar{position:fixed;top:0;left:0;right:0;height:18px;-webkit-app-region:drag;}
+      .drag-bar *{-webkit-app-region:no-drag;}
+    </style>
+  </head>
+  <body>
+    <div class="drag-bar"></div>
+    <select id="srcSel">
+      <option value="screen">Entire Screen</option>
+      <option value="tab">Tab</option>
+    </select>
+
+    <div class="controls">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <button id="testBtn">Test 5s</button>
+    </div>
+
+    <video id="preview" muted autoplay></video>
+    <div id="note"></div>
+
+    <script>
+    const ipc = window.ipcRenderer;
+    const sel = document.getElementById('srcSel');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const testBtn = document.getElementById('testBtn');
+    const preview = document.getElementById('preview');
+    const note = document.getElementById('note');
+    
+    const ua = navigator.userAgent;
+    if(/Mac/.test(ua)){
+      note.textContent='macOS: System audio not captured. Install BlackHole/Loopback or record mic only.';
+    }else if(/Windows/.test(ua)){
+      note.textContent='Windows: select meeting tab or "Share system audio" when prompted.';
+    }
+
+    let stream=null,mediaRec=null,recChunks=[],ws=null,audioCtx=null,audioProcessor=null,sourceNode=null;
+    
+    function floatTo16BitPCM(input){const out=new Int16Array(input.length);for(let i=0;i<input.length;i++){let s=Math.max(-1,Math.min(1,input[i]));out[i]=s<0?s*0x8000:s*0x7FFF;}return out;}
+    function downsampleBuffer(buffer,rate,target){if(target===rate)return buffer;const ratio=rate/target;const len=Math.round(buffer.length/ratio);const res=new Float32Array(len);let oRes=0,oBuf=0;while(oRes<res.length){const next=Math.round((oRes+1)*ratio);let accum=0,count=0;for(let i=oBuf;i<next&&i<buffer.length;i++){accum+=buffer[i];count++;}res[oRes]=accum/count;oRes++;oBuf=next;}return res;}
+
+    async function startCapture(testMs){if(ws){ws.close();ws=null;}
+      let constraints={audio:true,video:true};
+      try{stream=await navigator.mediaDevices.getDisplayMedia(constraints);}catch(err){console.warn('audio capture failed',err);try{stream=await navigator.mediaDevices.getDisplayMedia({video:true});alert('Continuing video-only');}catch(e){alert('Screen capture denied');return;}}
+      preview.srcObject=stream;
+      mediaRec=new MediaRecorder(stream,{mimeType:'video/webm; codecs=vp9,opus'});
+      recChunks=[];
+      mediaRec.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};
+      mediaRec.onstop=async()=>{const blob=new Blob(recChunks,{type:'video/webm'});const buf=await blob.arrayBuffer();const res=await ipc.invoke('save-recording',{buffer:buf});alert(res&&res.success?'Saved '+res.filePath:'Save failed '+res?.error);
+        recChunks=[];};
+      mediaRec.start(1000);
+      const tRes=await ipc.invoke('aai-get-realtime-token');
+      if(tRes&&tRes.success){ws=new WebSocket(`wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000&token=${tRes.token}`);
+        ws.onmessage=ev=>{const d=JSON.parse(ev.data);if(d.message_type==='PartialTranscript'){ipc.send('recorder:partial',d.text||'');}else if(d.message_type==='FinalTranscript'){const txt=(d.punctuated&&d.punctuated.transcript)||d.text||'';ipc.send('recorder:final',txt);} }; ws.onopen=()=>ipc.send('recorder:status',true); ws.onclose=()=>ipc.send('recorder:status',false); }
+      audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      sourceNode=audioCtx.createMediaStreamSource(stream);
+      audioProcessor=audioCtx.createScriptProcessor(4096,1,1);
+      sourceNode.connect(audioProcessor); audioProcessor.connect(audioCtx.destination);
+      audioProcessor.onaudioprocess=e=>{if(!ws||ws.readyState!==1)return;const f=e.inputBuffer.getChannelData(0);const ds=downsampleBuffer(f,audioCtx.sampleRate,16000);const pcm=floatTo16BitPCM(ds);ws.send(pcm.buffer);} ; startBtn.disabled=true;stopBtn.disabled=false; if(testMs){setTimeout(stopCapture,testMs);} }
+
+    function stopCapture(){if(mediaRec&&mediaRec.state!=='inactive')mediaRec.stop(); if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;} if(audioProcessor){audioProcessor.disconnect();audioProcessor=null;} if(sourceNode){sourceNode.disconnect();sourceNode=null;} if(audioCtx){audioCtx.close();audioCtx=null;} if(ws){ws.close();ws=null;} startBtn.disabled=false;stopBtn.disabled=true;}
+
+    startBtn.addEventListener('click',()=>startCapture());
+    stopBtn.addEventListener('click',stopCapture);
+    testBtn.addEventListener('click',()=>startCapture(5000));
+    </script>
+  </body>
+</html> 

@@ -1,120 +1,120 @@
-# electron-helper
+# PrepDock – Interview-Helper SaaS
 
+Minimal, stealthy desktop overlay that helps you *sound like your best self* during live interviews.  
+Records screen & audio, OCRs on-screen text, streams questions to OpenAI Assistants and reads the answer back in real-time.
 
-screenshot prompt
+This repository contains **both** the Electron desktop app and the small helper services that power it.
 
-You are a senior frontend engineer helping a teammate write or fix realistic code during a mock interview. Explain clearly, think out loud, and solve problems with clean logic and readable code.
-Read through the question and instructions carefully, identify initial code, testing code, or test cases
-When writing code comment HEAVILY like you're narrating while coding. Explain key parts and decision points, focusing on what is returned, what is rendered, and how data flows.
+---
 
+## TL;DR – local dev
+```bash
+# 1. install deps
+npm install
 
+# 2. env – copy and fill in your own keys
+cp env.example .env
 
-  constBIG_PAIR_PROGRAMMING_PROMPT = `
+# 3. run renderer + electron
+npm run dev        # vite dev-server on :5173
+npm run dev:electron
+```
+Unit tests:
+```bash
+npm test
+```
 
-    If provided a general coding question
+---
 
-    1. Read through the question, filenames, and instructions carefully, identify coding language, initial code, testing code, and test cases
+## High-level architecture
+```
+┌────────────────────────┐        ┌──────────────────────┐
+│         Landing page   │──────▶ │   Stripe Checkout    │
+└────────────────────────┘        └──────────────────────┘
+                                         │ webhook
+                                         ▼
+┌────────────────────────┐        ┌──────────────────────┐
+│  Next.js SaaS app      │◀───────│  Supabase + Postgres │
+│  (app.prepdock.com)    │        └──────────────────────┘
+│  – prompt editor       │
+│  – doc uploads         │
+│  – usage dashboard     │
+└────────────────────────┘
+           ▲   ▲
+           │   │ JWT + refresh_token
+           │   │
+           │   └──────────────────┐
+           │                      ▼
+┌────────────────────────┐   ┌────────────────────────┐
+│  PrepDock.exe (tray)   │   │   OpenAI Assistants    │
+│  – overlay             │   └────────────────────────┘
+│  – recorder            │
+│  – OCR + transcript    │
+└────────────────────────┘
+```
 
-    2. Explain your understanding of the question (1 sentence), ask a scope question if possible.
+---
 
-    3. Provide your approach so interviewer can verify our approach, follow these steps
+## Roadmap & status
 
-    === Pair-Programming Rules ===
+| Phase | Area | Feature | Status |
+|-------|------|---------|--------|
+| **0** | Tests | Jest + ESM harness <br/> Config, audio helper, prompt wrapper | ✅ done |
+|       | Dev   | Tailwind 4 + Radix + React scaffold | ✅ done |
+| **1** | SaaS   | Web workspace (Account/Billing/Docs/Behaviour) | *in progress* |
+|       | SaaS   | Stripe checkout → Supabase sync | ⏳ next |
+|       | Desktop | Tray entry, no task-bar, neutral titles | ⏳ planning |
+| **2** | Desktop | IPC auth bridge (downloaded token, gate OpenAI) | ⏳ planning |
+|       | Billing| Stripe webhooks & metered usage | ⏳ planning |
+| **3** | Extras | Prompt template marketplace, team sharing | 🛣️ later |
 
-    A. Never dump the whole solution at once. Work in**commit-sized steps**:
+### Current sprint – Web workspace foundation
+- [x] React + Radix Tabs shell (browser)
+- [x] Supabase magic-link sign-in
+- [ ] Hook Stripe trial success → create Supabase user row
+- [ ] File-upload endpoint (S3 presign)
+- [ ] Prompt editor with live token count
 
-    1.*Describe* the single change you’re about to make (new file, new
+### Up next
+1. Reference-Docs tab
+   - S3 presigned URL upload
+   - Persist `{user_id, file_id, size}` in Supabase
+   - Forward to `POST /v1/files` (OpenAI) automatically
+2. Behaviour tab
+   - Rich prompt editor with live token counter
+   - Version history (up to 10 previous edits)
+3. Billing tab
+   - Stripe billing portal iframe
+   - Usage meters (tokens, minutes, storage)
+4. Auto-update + code-sign (electron-updater + GitHub Releases)
 
-    function, refactor, test, etc.).
+---
 
-    2. Explain why the change matters in 1–2 sentences.
+## Recent updates (2024-06)
 
-    • Example: “So for pagination first we’ll need how many users we want to
+### ✨ Web – Account Settings page
+1. **Brand-new UI** – clean white cards, subtle borders, smooth hover animations, matching [Prismic](https://prismic.io/?ref=land-book.com) aesthetics.
+2. **Provider-aware logic**
+   - Email/password users see a **Change Password** form.
+   - OAuth users (Google, GitHub, …) do **not** see password fields.
+3. **Sign-out flow** – instantly refreshes NavBar/Hero to the logged-out state.
+4. **Danger zone** – users can *permanently* delete their account (Supabase Admin API).
 
-    show per page — like 5, 10, or 20 — and add a dropdown for that. Then
+### 🔐 Environment variables
+Add `SUPABASE_SERVICE_KEY` (service-role key) to `.env` / `.env.local` **inside the `web/` app** so the delete-account API can call `supabase.auth.admin.deleteUser()`.
 
-    we’ll figure out how many pages we need total, based on how many users
+```bash
+# in web/
+cp ../env.example .env.local # then fill in keys
+```
 
-    we have. We’ll set up buttons for going to the next or previous page,
+---
 
-    and make sure they don’t go out of bounds. Finally, we’ll make sure
+## Contributing
+1. Make sure `npm test` is green.  
+2. Follow the coding style enforced by ESLint & Prettier.  
+3. Submit PRs against the `dev` branch.
 
-    the table updates whenever you change the page or the number of users
+---
 
-    to show. No new files are needed; we’ll just add this to the existing
-
-    table component.”
-
-    3. Provide a**code-only patch**:
-
-    • Prepend a single-line anchor comment**immediately before** the code
-
-    fence, using this pattern
-
-    // PATCH  <path/from/repo/root>  ::`<location hint>`
-
-    – First token  = literal “// PATCH”
-
-    – Second token = path from repo root
-
-    – After “::”   = human hint (“before return statement”, “at EOF”,
-
-    “between imports and component”, etc.). Keep it < 60 chars.
-
-    • Open a fenced block tagged with the target language (js, tsx, css,
-
-    etc.). Paste**only** the new or replacement lines exactly as they
-
-    should appear in the file — *no “+” / “–” markers, no deleted lines,
-
-    no unchanged context*.
-
-    • Comment HEAVILY inside the code like you’re narrating while coding.
-
-    Focus on what is created, what is returned, what is rendered, and how
-
-    data flows.
-
-    • If you’re creating an entirely new file, the anchor comment is still
-
-    required; then include the whole file inside the fence.
-
-    • Emit multiple PATCH headers if you’re touching more than one file in
-
-    the same turn — one header + code fence per file.
-
-    4. End every message with:
-
-    🛑 Your turn — run / review + the actual next step you think we should take.
-
-    (Do not leave it as “what’s next.” Think ahead, reason from context, and suggest the most logical next action.)
-
-    B. Wait for the user’s reply (test output, screenshot, question) before
-
-    starting the next change.
-
-    C. Keep a running mental map of prior code; future steps may reference it,
-
-    but must still show the full code for any line they alter.
-
-    D. Stop after the tests pass or the user says “ship it”.
-
-    === End Pair-Programming Rules ===
-
-    4. Then carefully write clean correct code, like if the coding environment is typeScript, use type annotations so there's no error. Never use hash-based hex codes for color values in CSS or inline styles, use named colors (e.g. "red" instead of "#ff0000").
-
-    5. When writing code, comment HEAVILY like you're narrating while coding. Explain key parts and decision points, focusing on what is created, what is returned, what is rendered, and how data flows.
-
-    6. Ensure the solution strictly adheres to required output formats and constraints given by test cases or problem specifications.
-
-    If asked about follow-ups or provided error messages intended for debugging
-
-    1. First, figure out what the error message means and what could cause it.
-
-    2. Point out the specific part of the code that’s likely broken.
-
-    3. Use real-world reasoning before providing full fixed code: console logs, variable checks, common mistakes (please provide where to look or add).
-
-    4. Provide fixed code. You need to mark the code changes in the code, and explain what you are doing.
-
-  `;
+© PrepDock Inc.  All product names are intentionally generic for stealth.
