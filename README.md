@@ -1,9 +1,33 @@
 # PrepDock – Interview-Helper SaaS
 
-Minimal, stealthy desktop overlay that helps you *sound like your best self* during live interviews.  
-Records screen & audio, OCRs on-screen text, streams questions to OpenAI Assistants and reads the answer back in real-time.
+🌐 Web Experience (Framer + Browser)
+The front page (built in Framer) is designed to attract users and explain the product.
 
-This repository contains **both** the Electron desktop app and the small helper services that power it.
+Users proceed through a billing step (Stripe integration coming later).
+
+After payment, they are redirected to a lightweight web workspace:
+
+Upload PDFs, resumes, job descriptions.
+
+Access a prompt-based assistant for behavioral prep and content-driven Q&A.
+
+🖥️ Desktop App (Electron)
+To activate the real-time audio assistant, users must download the PrepDock Electron app.
+
+On launch, users must log in again to sync their workspace context from the browser.
+
+The app accesses uploaded documents and uses them to provide contextual voice-based responses.
+
+🥷 Stealth & Minimal UX Goals
+The desktop app should run in the background, with no taskbar icon or visible chrome.
+
+App binary and windows should be renamed for discretion:
+
+Use PrepDock.exe as the app name.
+
+app.setName("PrepDock"), and title windows like "Updater" to blend in.
+
+Electron windows should be non-focus-stealing and persistent, suitable for passive background use.
 
 ---
 
