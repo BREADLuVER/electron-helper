@@ -1,6 +1,10 @@
+"use client";
 import Link from 'next/link';
+import { useUser } from '@/contexts/UserContext';
 
 export default function Hero() {
+  const { user } = useUser();
+
   return (
     <section className="bg-white">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-32 text-center">
@@ -12,8 +16,8 @@ export default function Hero() {
         </p>
 
         <div className="mt-12 flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/signup" className="inline-flex items-center justify-center rounded-lg bg-black text-white px-8 py-4 text-base font-semibold hover:bg-neutral-800 transition-colors">
-            Get started
+          <Link href={user ? '/dashboard' : '/signup'} className="inline-flex items-center justify-center rounded-lg bg-black text-white px-8 py-4 text-base font-semibold hover:bg-neutral-800 transition-colors">
+            {user ? 'Start tuning' : 'Get started'}
           </Link>
           <Link href="#features" className="inline-flex items-center justify-center rounded-lg border border-black px-8 py-4 text-base font-semibold text-black hover:bg-gray-100 transition-colors">
             How it works <span className="ml-2 text-sm font-normal text-gray-500">2&nbsp;min ⟶</span>

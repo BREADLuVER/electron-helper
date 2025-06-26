@@ -90,6 +90,26 @@ npm test
 
 ---
 
+## Recent updates (2024-06)
+
+### ✨ Web – Account Settings page
+1. **Brand-new UI** – clean white cards, subtle borders, smooth hover animations, matching [Prismic](https://prismic.io/?ref=land-book.com) aesthetics.
+2. **Provider-aware logic**
+   - Email/password users see a **Change Password** form.
+   - OAuth users (Google, GitHub, …) do **not** see password fields.
+3. **Sign-out flow** – instantly refreshes NavBar/Hero to the logged-out state.
+4. **Danger zone** – users can *permanently* delete their account (Supabase Admin API).
+
+### 🔐 Environment variables
+Add `SUPABASE_SERVICE_KEY` (service-role key) to `.env` / `.env.local` **inside the `web/` app** so the delete-account API can call `supabase.auth.admin.deleteUser()`.
+
+```bash
+# in web/
+cp ../env.example .env.local # then fill in keys
+```
+
+---
+
 ## Contributing
 1. Make sure `npm test` is green.  
 2. Follow the coding style enforced by ESLint & Prettier.  

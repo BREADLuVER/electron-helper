@@ -32,7 +32,11 @@ export default function Pricing() {
               <ul className="mt-6 space-y-2 text-gray-700 text-sm text-left">
                 {p.perks.map((perk) => <li key={perk}>✓ {perk}</li>)}
               </ul>
-              <a href={p.cta} className="mt-8 inline-flex justify-center rounded-lg bg-black text-white px-6 py-3 text-sm font-medium hover:bg-neutral-800 transition-colors w-full">Start trial</a>
+              <button onClick={async()=>{
+                const res = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plan: p.name.toLowerCase()})});
+                const { url } = await res.json();
+                if(url) window.location.href = url;
+              }} className="mt-8 inline-flex justify-center rounded-lg bg-black text-white px-6 py-3 text-sm font-medium hover:bg-neutral-800 transition-colors w-full">Start trial</button>
             </div>
           ))}
         </div>
