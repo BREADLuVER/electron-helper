@@ -1,102 +1,100 @@
-# PrepDock – Interview-Helper → SaaS
+# PrepDock – Interview-Helper SaaS
 
-> Desktop overlay + Web workspace for realistic interview practice powered by OpenAI Assistants.
+Minimal, stealthy desktop overlay that helps you *sound like your best self* during live interviews.  
+Records screen & audio, OCRs on-screen text, streams questions to OpenAI Assistants and reads the answer back in real-time.
 
----
-
-## 0  Current status (June 2025)
-
-| Area | What we already have |
-|------|----------------------|
-| Electron overlay | • Screen/audio capture with live transcript overlay  <br/>• Screenshot → OCR → "Ask AI" pane  <br/>• Behavioural assistant streaming (GPT-4o)  <br/>• FFmpeg device enumeration & configurable mic / system-audio  |
-| Core helpers | • `electron/audioDevices.js` – FFmpeg device parser (unit-tested)  <br/>• `electron/promptHelpers.js` – `wrapQuestion()` & tone constants (unit-tested) |
-| Test safety-net | Jest + ESM; three green suites (`config`, `audioDevices`, `wrapQuestion`) wired to run in CI |
-| Settings window | React + Radix + Tailwind scaffold with 4 tabs  <br/>• "Account" tab: Supabase magic-link sign-in |
-| Build tooling | Vite multi-page build (`index.html`, `settings.html`) + Tailwind v4  |
+This repository contains **both** the Electron desktop app and the small helper services that power it.
 
 ---
 
-## 1  Environment variables
-
-Create a local `.env` (or copy `env.example`) and provide:
-
-```
-VITE_SUPABASE_URL=   # e.g. https://xyzcompany.supabase.co
-VITE_SUPABASE_ANON_KEY=
-OPENAI_API_KEY=
-OCR_SPACE_API_KEY=
-ASSEMBLYAI_API_KEY=
-```
-
-Run dev servers:
-
+## TL;DR – local dev
 ```bash
-npm install           # once
-npm run dev           # Vite renderer
-npm run dev:electron  # Electron main (optional helper script)
+# 1. install deps
+npm install
+
+# 2. env – copy and fill in your own keys
+cp env.example .env
+
+# 3. run renderer + electron
+npm run dev        # vite dev-server on :5173
+npm run dev:electron
 ```
-
----
-
-## 2  Near-term roadmap
-
-So for our service I was hoping for a online seamless experience - a framer frontpage to attrach users, then billing, then after billing users have their own workspace where they gain access to prompt engineer + file upload (behavioral), and our service by clicking a start interview button. 
-### A.  Auth session → Main process  *(blocking)*
-- [ ] Store Supabase `refresh_token` in Keytar after sign-in.
-- [ ] On app launch restore token: `supabase.auth.setSession()` inside Settings preload.
-- [ ] IPC `get-current-user` & `user-updated` so Electron main knows the user id/email.
-- [ ] Guard all OpenAI / upload calls: prompt user to sign-in when missing.
-
-### B.  Billing (Stripe)
-- [ ] Hosted Checkout → `users.plan` in Supabase via webhook.
-- [ ] Billing tab shows current plan & usage; "Upgrade" button.
-
-### C.  Reference Docs uploader
-- [ ] S3 (or R2) signed PUT → row in `files` table.
-- [ ] Immediately forward file to OpenAI `/files` (purpose:`assistants`).
-- [ ] Surface per-assistant 20-file counter.
-
-### D.  Behaviour prompt editor
-- [ ] Textarea with live token meter.
-- [ ] Auto-save versions → `prompts` table; allow restore.
-
-### E.  Desktop ↔ Web coherence
-- [ ] Deep link `prepdock://start?assistant=behavioural` to open overlay from web.
-- [ ] Share Supabase session between devices (JWT refresh).
-
-### F.  CI / Release
-- [ ] GitHub Actions `npm ci && npm test` gate.
-- [ ] Electron auto-update (electron-builder + GitHub Releases).
-
----
-
-## 3  Task checklist (living document)
-
-- [x] Extract `listAudioDevices()`  → **audioDevices.js** & add unit test
-- [x] Extract `wrapQuestion()`   → **promptHelpers.js** & add unit test
-- [x] Green Jest baseline in CI
-- [x] Settings window scaffold (React + Tailwind)
-- [ ] Persist Supabase session (Keytar) & IPC bridge
-- [ ] Stripe Checkout + webhook → plan column
-- [ ] Reference-Docs uploads + OpenAI `/files`
-- [ ] Prompt editor with token counter
-- [ ] Electron menu → open Settings window
-- [ ] Public Framer marketing site
-
-Tick items as they land in PRs.
-
----
-
-## 4  Contributing / dev tips
-
+Unit tests:
 ```bash
-npm run dev          # renderer (http://localhost:5173)
-npm run dev:electron # main process – auto-relaunch on changes
-npm test             # run Jest suites
+npm test
 ```
-
-Tailwind is v4 — classes purge automatically via the new `content` globs.
 
 ---
 
-Happy shipping! 🛫
+## High-level architecture
+```
+┌────────────────────────┐        ┌──────────────────────┐
+│         Landing page   │──────▶ │   Stripe Checkout    │
+└────────────────────────┘        └──────────────────────┘
+                                         │ webhook
+                                         ▼
+┌────────────────────────┐        ┌──────────────────────┐
+│  Next.js SaaS app      │◀───────│  Supabase + Postgres │
+│  (app.prepdock.com)    │        └──────────────────────┘
+│  – prompt editor       │
+│  – doc uploads         │
+│  – usage dashboard     │
+└────────────────────────┘
+           ▲   ▲
+           │   │ JWT + refresh_token
+           │   │
+           │   └──────────────────┐
+           │                      ▼
+┌────────────────────────┐   ┌────────────────────────┐
+│  PrepDock.exe (tray)   │   │   OpenAI Assistants    │
+│  – overlay             │   └────────────────────────┘
+│  – recorder            │
+│  – OCR + transcript    │
+└────────────────────────┘
+```
+
+---
+
+## Roadmap & status
+
+| Phase | Area | Feature | Status |
+|-------|------|---------|--------|
+| **0** | Tests | Jest + ESM harness <br/> Config, audio helper, prompt wrapper | ✅ done |
+|       | Dev   | Tailwind 4 + Radix + React scaffold | ✅ done |
+| **1** | SaaS   | Web workspace (Account/Billing/Docs/Behaviour) | *in progress* |
+|       | SaaS   | Stripe checkout → Supabase sync | ⏳ next |
+|       | Desktop | Tray entry, no task-bar, neutral titles | ⏳ planning |
+| **2** | Desktop | IPC auth bridge (downloaded token, gate OpenAI) | ⏳ planning |
+|       | Billing| Stripe webhooks & metered usage | ⏳ planning |
+| **3** | Extras | Prompt template marketplace, team sharing | 🛣️ later |
+
+### Current sprint – Web workspace foundation
+- [x] React + Radix Tabs shell (browser)
+- [x] Supabase magic-link sign-in
+- [ ] Hook Stripe trial success → create Supabase user row
+- [ ] File-upload endpoint (S3 presign)
+- [ ] Prompt editor with live token count
+
+### Up next
+1. Reference-Docs tab
+   - S3 presigned URL upload
+   - Persist `{user_id, file_id, size}` in Supabase
+   - Forward to `POST /v1/files` (OpenAI) automatically
+2. Behaviour tab
+   - Rich prompt editor with live token counter
+   - Version history (up to 10 previous edits)
+3. Billing tab
+   - Stripe billing portal iframe
+   - Usage meters (tokens, minutes, storage)
+4. Auto-update + code-sign (electron-updater + GitHub Releases)
+
+---
+
+## Contributing
+1. Make sure `npm test` is green.  
+2. Follow the coding style enforced by ESLint & Prettier.  
+3. Submit PRs against the `dev` branch.
+
+---
+
+© PrepDock Inc.  All product names are intentionally generic for stealth.
