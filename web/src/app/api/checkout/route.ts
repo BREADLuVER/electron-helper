@@ -1,9 +1,14 @@
 import Stripe from 'stripe';
 import { NextRequest, NextResponse } from 'next/server';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2023-10-16',
-});
+if (!process.env.STRIPE_SECRET_KEY) {
+  // build-time stub – payments not enabled yet
+}
+
+const stripeKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeKey
+  ? new Stripe(stripeKey, { apiVersion: '2023-10-16' })
+  : null as unknown as Stripe;
 
 const PRICE_MAP: Record<string, string> = {
   free: process.env.STRIPE_PRICE_FREE!,
@@ -13,6 +18,9 @@ const PRICE_MAP: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   const { plan } = await req.json();
+  if (!stripe) {
+    return NextResponse.json({ error: 'Payments disabled' }, { status: 501 });
+  }
   const priceId = PRICE_MAP[plan];
   if (!priceId) return NextResponse.json({ error: 'Unknown plan' }, { status: 400 });
 

@@ -1,3 +1,5 @@
+"use client";
+
 export default function Pricing() {
   const plans = [
     {
@@ -33,9 +35,17 @@ export default function Pricing() {
                 {p.perks.map((perk) => <li key={perk}>✓ {perk}</li>)}
               </ul>
               <button onClick={async()=>{
-                const res = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plan: p.name.toLowerCase()})});
-                const { url } = await res.json();
-                if(url) window.location.href = url;
+                try {
+                  const res = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plan: p.name.toLowerCase()})});
+                  if (res.status === 501) {
+                    window.location.href = '/download';
+                    return;
+                  }
+                  const { url } = await res.json();
+                  if(url) window.location.href = url;
+                } catch {
+                  window.location.href = '/download';
+                }
               }} className="mt-8 inline-flex justify-center rounded-lg bg-black text-white px-6 py-3 text-sm font-medium hover:bg-neutral-800 transition-colors w-full">Start trial</button>
             </div>
           ))}

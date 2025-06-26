@@ -18,7 +18,7 @@ import fs from "fs";
 import os from "os";
 import { pathToFileURL } from "url";
 import { fileURLToPath } from "url";
-import { config, saveConfig } from "./config.js";
+import { config, saveConfig, missingCriticalKeys } from "./config.js";
 import fetch from "node-fetch";
 import { FormData } from "formdata-node";
 import { fileFromPath } from "formdata-node/file-from-path";
@@ -32,15 +32,25 @@ const ocrapiKey = config.OCR_SPACE_API_KEY;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-if (!config.OPENAI_API_KEY) {
-  throw new Error("OPENAI_API_KEY is not defined in the configuration.");
+if (missingCriticalKeys()) {
+  app.whenReady().then(() => {
+    const modal = new BrowserWindow({
+      width: 400,
+      height: 250,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title: "PrepDock – Sign in",
+      alwaysOnTop: true,
+      modal: true,
+      parent: null,
+      webPreferences: { nodeIntegration: false, contextIsolation: true },
+    });
+    modal.loadURL("https://app.prepdock.com/signup");
+  });
 }
 
-if (!config.ASSEMBLYAI_API_KEY) {
-  throw new Error("ASSEMBLYAI_API_KEY is not defined in the configuration.");
-}
-
-if (!ocrapiKey) throw new Error("OCR_SPACE_API_KEY env var is empty");
+if (!ocrapiKey) console.warn("OCR_SPACE_API_KEY not provided – OCR disabled");
 // console.log("[OCR] key starts:", ocrapiKey.slice(0, 6), "… len:", ocrapiKey.length);
 
 import WebSocket from "ws";

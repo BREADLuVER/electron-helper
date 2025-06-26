@@ -1,4 +1,36 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+PrepDock is a privacy-focused, AI-powered interview assistant that blends a seamless online UX with a discreet desktop app.
+
+🌐 Web Experience (Framer + Browser)
+The front page (built in Framer) is designed to attract users and explain the product.
+
+Users proceed through a billing step (Stripe integration coming later).
+
+After payment, they are redirected to a lightweight web workspace:
+
+Upload PDFs, resumes, job descriptions.
+
+Access a prompt-based assistant for behavioral prep and content-driven Q&A.
+
+🖥️ Desktop App (Electron)
+To activate the real-time audio assistant, users must download the PrepDock Electron app.
+
+On launch, users must log in again to sync their workspace context from the browser.
+
+The app accesses uploaded documents and uses them to provide contextual voice-based responses.
+
+🥷 Stealth & Minimal UX Goals
+The desktop app should run in the background, with no taskbar icon or visible chrome.
+
+App binary and windows should be renamed for discretion:
+
+Use PrepDock.exe as the app name.
+
+app.setName("PrepDock"), and title windows like "Updater" to blend in.
+
+Electron windows should be non-focus-stealing and persistent, suitable for passive background use.
+
+
 
 ## Getting Started
 
